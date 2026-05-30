@@ -1,0 +1,37 @@
+# Python
+__pycache__/
+*.py[cod]
+*.pyo
+*.egg-info/
+dist/
+build/
+*.egg
+
+# Données sensibles / privées
+credentials.json
+token.json
+planning anniv.xlsx
+*.xlsx
+
+# Environnement
+.env
+.venv/
+venv/
+env/
+
+# IDE
+.vscode/
+.idea/
+*.swp
+*.swo
+
+# OS
+.DS_Store
+Thumbs.db
+desktop.ini
+
+# Streamlit cache
+.streamlit/secrets.toml
+
+# Fichiers temporaires
+analyze_excel.py
