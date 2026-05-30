@@ -23,6 +23,7 @@ from config import (
 from modules.qweekle_api import QweekleClient
 from modules.gmail_api import GmailClient
 from modules.table_allocator import TableAllocator
+from modules import supabase_client
 
 # ── Configuration de la page ──────────────────────────────────
 st.set_page_config(
@@ -97,13 +98,19 @@ def _opt_cell(value: int) -> str:
 # ══════════════════════════════════════════════════════════════
 
 @st.cache_data(ttl=300, show_spinner=False)
-def _fetch_reservations(date_start: datetime.date, _demo_mode: bool) -> list[dict]:
-    """Récupère et alloue les tables. Renvoie une liste de dicts (cache-safe)."""
-    if _demo_mode:
+def _fetch_reservations(date_start: datetime.date, _data_source: str) -> list[dict]:
+    """
+    Récupère et alloue les tables. Renvoie une liste de dicts (cache-safe).
+    _data_source: 'supabase', 'qweekle', ou 'demo'
+    """
+    if _data_source == "supabase":
+        rows = supabase_client.get_reservations(date_start)
+        reservations = [supabase_client.row_to_reservation(r) for r in rows]
+    elif _data_source == "qweekle":
+        reservations = QweekleClient().get_reservations(date_start, date_start)
+    else:
         from modules.demo_data import generate_demo_reservations
         reservations = generate_demo_reservations(date_start)
-    else:
-        reservations = QweekleClient().get_reservations(date_start, date_start)
 
     allocator = TableAllocator(tables=TABLES)
     reservations = allocator.allocate(reservations)
@@ -211,12 +218,18 @@ def _render_sidebar() -> datetime.date:
         st.divider()
 
         st.markdown("##### 🔌 Connexions")
+        sbok = supabase_client.is_configured()
         qok = QweekleClient().is_configured()
         gok = GmailClient().is_configured()
+        dot_s = "green" if sbok else "red"
         dot_q = "green" if qok else "red"
         dot_g = "green" if gok else "red"
         st.markdown(
-            f'<span class="status-dot {dot_q}"></span> **Qweekle** — {"Connecté" if qok else "Mode Démo"}',
+            f'<span class="status-dot {dot_s}"></span> **Supabase** — {"Connecté" if sbok else "Non configuré"}',
+            unsafe_allow_html=True,
+        )
+        st.markdown(
+            f'<span class="status-dot {dot_q}"></span> **Qweekle** — {"Connecté" if qok else "Non configuré"}',
             unsafe_allow_html=True,
         )
         st.markdown(
@@ -273,7 +286,7 @@ def _render_header(date: datetime.date, demo: bool):
         st.markdown(
             '<div class="demo-banner fade-in">'
             "🎮 Mode Démonstration — Données fictives. "
-            "Configurez l'API Qweekle dans config.py pour les vraies réservations."
+            "Connectez Supabase + Qweekle pour afficher les vraies réservations."
             "</div>",
             unsafe_allow_html=True,
         )
@@ -680,11 +693,20 @@ def _enrich_gmail(reservations: list[Reservation]) -> list[Reservation]:
 def main():
     _inject_css()
     selected_date = _render_sidebar()
-    demo = not QweekleClient().is_configured()
+
+    # Déterminer la source de données (priorité : Supabase > Qweekle > Démo)
+    if supabase_client.is_configured():
+        data_source = "supabase"
+    elif QweekleClient().is_configured():
+        data_source = "qweekle"
+    else:
+        data_source = "demo"
+
+    demo = data_source == "demo"
     _render_header(selected_date, demo)
 
     try:
-        raw = _fetch_reservations(selected_date, demo)
+        raw = _fetch_reservations(selected_date, data_source)
         reservations = [_to_reservation(d) for d in raw]
     except Exception as e:
         st.error(f"❌ Erreur chargement : {e}")
