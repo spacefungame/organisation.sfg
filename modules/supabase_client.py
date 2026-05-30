@@ -1,12 +1,13 @@
 """
 Client Supabase - Gravity Center
 =================================
-Lit et écrit les réservations depuis la base de données Supabase
-via l'API REST (pas de dépendance supplémentaire, utilise requests).
+Lit les activités Qweekle depuis booking_activities, les regroupe
+par order_id et reconstruit des objets Reservation pour le dashboard.
 """
 import datetime
 import logging
-from typing import Optional
+from collections import defaultdict
+from zoneinfo import ZoneInfo
 
 import requests
 import streamlit as st
@@ -14,6 +15,17 @@ import streamlit as st
 from config import Reservation
 
 logger = logging.getLogger(__name__)
+
+# Fuseau horaire Belgique (UTC+1 hiver, UTC+2 été)
+TZ_LOCAL = ZoneInfo("Europe/Brussels")
+TZ_UTC = ZoneInfo("UTC")
+
+# Catégories Qweekle à afficher dans le planning anniversaires
+BIRTHDAY_CATEGORIES = [
+    "anniversaire",
+    "événement",
+    "evenement",
+]
 
 
 def _get_credentials() -> tuple[str, str] | None:
@@ -34,7 +46,6 @@ def is_configured() -> bool:
 
 
 def _headers(key: str) -> dict:
-    """En-têtes d'authentification pour l'API REST Supabase."""
     return {
         "apikey": key,
         "Authorization": f"Bearer {key}",
@@ -43,13 +54,21 @@ def _headers(key: str) -> dict:
     }
 
 
-def get_reservations(target_date: datetime.date) -> list[dict]:
-    """
-    Récupère les réservations depuis Supabase pour une date donnée.
+def _utc_to_local(iso_str: str) -> datetime.datetime:
+    """Convertit un timestamp ISO UTC en datetime local (Belgique)."""
+    # Qweekle envoie : "2026-08-28T15:00:00.000000Z"
+    clean = iso_str.replace("Z", "+00:00")
+    dt_utc = datetime.datetime.fromisoformat(clean)
+    if dt_utc.tzinfo is None:
+        dt_utc = dt_utc.replace(tzinfo=TZ_UTC)
+    return dt_utc.astimezone(TZ_LOCAL)
 
-    Returns:
-        Liste de dicts avec les données brutes de la table.
-        Retourne une liste vide si non configuré ou en cas d'erreur.
+
+def get_booking_activities(target_date: datetime.date) -> list[dict]:
+    """
+    Récupère toutes les activités Qweekle pour une date donnée.
+
+    Filtre sur start_at dans la plage [date 00:00, date+1 00:00] UTC.
     """
     creds = _get_credentials()
     if not creds:
@@ -57,59 +76,157 @@ def get_reservations(target_date: datetime.date) -> list[dict]:
 
     url, key = creds
 
+    # Construire les bornes de date en UTC
+    # On cherche les activités dont le start_at local tombe sur target_date.
+    # Pour couvrir toute la journée belge en UTC : on prend une marge large.
+    date_start_utc = f"{target_date.isoformat()}T00:00:00Z"
+    date_end_utc = f"{(target_date + datetime.timedelta(days=1)).isoformat()}T23:59:59Z"
+
     try:
         response = requests.get(
-            f"{url}/rest/v1/reservations",
+            f"{url}/rest/v1/booking_activities",
             headers=_headers(key),
-            params={
-                "date": f"eq.{target_date.isoformat()}",
-                "order": "start_time.asc",
-            },
+            params=[
+                ("start_at", f"gte.{date_start_utc}"),
+                ("start_at", f"lt.{date_end_utc}"),
+                ("order", "order_id,pack_step.asc"),
+            ],
             timeout=10,
         )
         response.raise_for_status()
         return response.json()
     except Exception as e:
-        logger.error("Erreur lecture Supabase : %s", e)
+        logger.error("Erreur lecture Supabase booking_activities : %s", e)
         return []
 
 
-def row_to_reservation(row: dict) -> Reservation:
-    """Convertit une ligne Supabase en objet Reservation."""
-    date_parts = row["date"].split("-")
-    st_parts = row["start_time"].split(":")
-    et_parts = row["end_time"].split(":")
+def _is_birthday_category(category: str) -> bool:
+    """Vérifie si la catégorie correspond à un anniversaire/événement."""
+    cat_lower = category.lower()
+    return any(kw in cat_lower for kw in BIRTHDAY_CATEGORIES)
 
-    return Reservation(
-        id=str(row.get("id", "")),
-        reservation_number=str(row.get("qweekle_id", row.get("id", ""))),
-        client_name=row.get("client_name", ""),
-        date=datetime.date(int(date_parts[0]), int(date_parts[1]), int(date_parts[2])),
-        start_time=datetime.time(int(st_parts[0]), int(st_parts[1])),
-        end_time=datetime.time(int(et_parts[0]), int(et_parts[1])),
-        activities=row.get("activities", ""),
-        nb_persons=row.get("nb_persons", 0),
-        assigned_table=row.get("assigned_table"),
-        child_name=row.get("child_name", ""),
-        child_age=str(row.get("child_age", "")),
-        brownie=row.get("brownie", 0),
-        gateau_crepes=row.get("gateau_crepes", 0),
-        donuts=row.get("donuts", 0),
-        bonbons=row.get("bonbons", 0),
-        kidibul=row.get("kidibul", 0),
-        chips=row.get("chips", 0),
-        crepes=row.get("crepes", 0),
-        granite_200=row.get("granite_200", 0),
-        granite_350=row.get("granite_350", 0),
-        break_time=row.get("break_time", ""),
-        comment=row.get("comment", ""),
-        arrived=row.get("arrived", False),
-        paid=row.get("paid", False),
-    )
+
+def activities_to_reservations(
+    activities: list[dict],
+    target_date: datetime.date,
+    birthday_only: bool = True,
+) -> list[Reservation]:
+    """
+    Regroupe les activités par order_id et construit des Reservations.
+
+    Chaque order_id = une réservation complète (accueil + jeux + table).
+    On reconstruit le texte d'activité à partir des labels individuels.
+    """
+    # Regrouper par order_id
+    groups: dict[str, list[dict]] = defaultdict(list)
+    for act in activities:
+        oid = act.get("order_id", "")
+        if oid:
+            groups[oid].append(act)
+
+    reservations = []
+
+    for order_id, acts in groups.items():
+        # Trier par pack_step
+        acts.sort(key=lambda a: a.get("pack_step", 0))
+
+        # Filtrer : uniquement les anniversaires si demandé
+        if birthday_only:
+            categories = [a.get("category", "") for a in acts]
+            if not any(_is_birthday_category(c) for c in categories):
+                continue
+
+        # ── Infos client (depuis la première activité) ────────
+        first = acts[0]
+        firstname = first.get("client_firstname", "")
+        lastname = first.get("client_lastname", "")
+        client_name = f"{lastname} {firstname}".strip() or "Inconnu"
+
+        # ── Plage horaire globale ─────────────────────────────
+        start_times = [a["start_at"] for a in acts if a.get("start_at")]
+        end_times = [a["end_at"] for a in acts if a.get("end_at")]
+
+        if not start_times or not end_times:
+            continue
+
+        earliest_local = _utc_to_local(min(start_times))
+        latest_local = _utc_to_local(max(end_times))
+
+        # Vérifier que ça tombe bien sur la date demandée
+        if earliest_local.date() != target_date:
+            continue
+
+        # ── Reconstruire le texte d'activité ──────────────────
+        laser_count = 0
+        has_team = False
+        quiz_minutes = 0
+
+        for a in acts:
+            label = (a.get("label", "") or "").lower()
+            cat = (a.get("category", "") or "").lower()
+            subcat = (a.get("subcategory", "") or "").lower()
+            dur = a.get("duration", 0) or 0
+
+            if "laser" in label or "laser" in cat:
+                # Ignorer si c'est la catégorie "Anniversaire" avec location laser
+                if "partie" in subcat or "laser" in subcat or "laser" in label:
+                    laser_count += 1
+            elif "team" in label or "team" in cat:
+                has_team = True
+            elif "quiz" in label or "quiz" in cat:
+                quiz_minutes += dur
+
+        parts = []
+        if has_team:
+            parts.append("1H")
+        if laser_count > 0:
+            parts.append(f"{laser_count} partie{'s' if laser_count > 1 else ''}")
+        if quiz_minutes > 0:
+            parts.append(f"{quiz_minutes} min Quiz")
+
+        activities_str = " + ".join(parts) if parts else "Anniversaire"
+
+        # ── Nombre de participants ────────────────────────────
+        nb_persons = first.get("qty", 0) or 0
+
+        # ── Statut ────────────────────────────────────────────
+        status = first.get("global_status", "")
+
+        # ── Construire la Reservation ─────────────────────────
+        reservation = Reservation(
+            id=order_id,
+            reservation_number=order_id[:12],
+            client_name=client_name,
+            date=target_date,
+            start_time=earliest_local.time().replace(tzinfo=None),
+            end_time=latest_local.time().replace(tzinfo=None),
+            activities=activities_str,
+            nb_persons=nb_persons,
+            child_name="",      # Pas dans les données Qweekle
+            child_age="",       # Pas dans les données Qweekle
+            comment=f"Status: {status}" if status else "",
+        )
+        reservations.append(reservation)
+
+    # Trier par heure de début
+    reservations.sort(key=lambda r: (r.start_time.hour, r.start_time.minute))
+    return reservations
+
+
+def get_reservations_for_date(
+    target_date: datetime.date,
+    birthday_only: bool = True,
+) -> list[Reservation]:
+    """
+    Point d'entrée principal : récupère les réservations Qweekle
+    depuis Supabase pour une date donnée.
+    """
+    activities = get_booking_activities(target_date)
+    return activities_to_reservations(activities, target_date, birthday_only)
 
 
 def get_webhook_logs(limit: int = 20) -> list[dict]:
-    """Récupère les derniers logs de webhooks (pour debug)."""
+    """Récupère les derniers logs de webhooks (debug)."""
     creds = _get_credentials()
     if not creds:
         return []

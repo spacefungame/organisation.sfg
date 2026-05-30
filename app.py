@@ -104,8 +104,7 @@ def _fetch_reservations(date_start: datetime.date, _data_source: str) -> list[di
     _data_source: 'supabase', 'qweekle', ou 'demo'
     """
     if _data_source == "supabase":
-        rows = supabase_client.get_reservations(date_start)
-        reservations = [supabase_client.row_to_reservation(r) for r in rows]
+        reservations = supabase_client.get_reservations_for_date(date_start, birthday_only=True)
     elif _data_source == "qweekle":
         reservations = QweekleClient().get_reservations(date_start, date_start)
     else:
