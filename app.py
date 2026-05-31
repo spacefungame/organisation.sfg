@@ -194,6 +194,36 @@ def _inject_css():
     try:
         css = css_path.read_text(encoding="utf-8")
         st.markdown(f"<style>{css}</style>", unsafe_allow_html=True)
+        
+        # Injection du thème clair si sélectionné
+        theme = st.session_state.get("theme", "Sombre")
+        if theme == "Clair":
+            light_css = """
+            <style>
+            :root {
+                --bg-primary:       #F8FAFC;
+                --bg-secondary:     #FFFFFF;
+                --bg-card:          rgba(255, 255, 255, 0.75);
+                --bg-card-hover:    rgba(255, 255, 255, 0.95);
+                --accent:           #7C3AED;
+                --accent-glow:      rgba(124, 58, 237, 0.25);
+                --accent-light:     #6D28D9;
+                --text-primary:     #0F172A;
+                --text-secondary:   #475569;
+                --text-muted:       #94A3B8;
+                --border-subtle:    rgba(15, 23, 42, 0.10);
+                --border-accent:    rgba(124, 58, 237, 0.20);
+                --sidebar-bg-top:   #F1F5F9;
+                --sidebar-bg-bottom:#F8FAFC;
+                --table-row-odd:    rgba(255, 255, 255, 0.8);
+                --table-row-even:   rgba(241, 245, 249, 0.5);
+                --timeline-label-bg:rgba(241, 245, 249, 0.8);
+                --timeline-empty-bg:rgba(241, 245, 249, 0.4);
+                --client-name-color:#0F172A;
+            }
+            </style>
+            """
+            st.markdown(light_css, unsafe_allow_html=True)
     except FileNotFoundError:
         pass
 
@@ -214,6 +244,21 @@ def _render_sidebar() -> datetime.date:
         )
 
         selected = st.date_input("📅 Date du planning", value=datetime.date.today(), format="DD/MM/YYYY")
+        st.divider()
+
+        # Choix du thème
+        st.markdown("##### 🎨 Mode d'affichage")
+        theme_index = 0 if st.session_state.get("theme", "Sombre") == "Sombre" else 1
+        theme_mode = st.radio(
+            "Choisissez le thème", 
+            ["Sombre", "Clair"], 
+            index=theme_index, 
+            horizontal=True
+        )
+        if theme_mode != st.session_state.get("theme"):
+            st.session_state.theme = theme_mode
+            st.rerun()
+            
         st.divider()
 
         st.markdown("##### 🔌 Connexions")

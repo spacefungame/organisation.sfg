@@ -7,7 +7,15 @@ par order_id et reconstruit des objets Reservation pour le dashboard.
 import datetime
 import logging
 from collections import defaultdict
-from zoneinfo import ZoneInfo
+
+try:
+    from zoneinfo import ZoneInfo
+    TZ_LOCAL = ZoneInfo("Europe/Brussels")
+    TZ_UTC = ZoneInfo("UTC")
+except Exception:
+    # Fallback si zoneinfo/tzdata absent
+    TZ_LOCAL = datetime.timezone(datetime.timedelta(hours=2))  # CEST
+    TZ_UTC = datetime.timezone.utc
 
 import requests
 import streamlit as st
@@ -15,10 +23,6 @@ import streamlit as st
 from config import Reservation
 
 logger = logging.getLogger(__name__)
-
-# Fuseau horaire Belgique (UTC+1 hiver, UTC+2 été)
-TZ_LOCAL = ZoneInfo("Europe/Brussels")
-TZ_UTC = ZoneInfo("UTC")
 
 # Catégories Qweekle à afficher dans le planning anniversaires
 BIRTHDAY_CATEGORIES = [
