@@ -192,11 +192,10 @@ def activities_to_reservations(
                 quiz_minutes += dur
 
             # Détecter l'activité "Table réservée" = pause gâteau
-            if ("table" in label and "réservée" in label) or \
-               ("table" in label and "reserv" in label) or \
-               ("anniversaire" in cat and "table" in label):
-                if a.get("start_at"):
-                    table_start_local = _utc_to_local(a["start_at"])
+            # On détecte par la catégorie "Anniversaire" (la seule activité
+            # de cette catégorie est la réservation de table)
+            if "anniversaire" in cat and a.get("start_at"):
+                table_start_local = _utc_to_local(a["start_at"])
 
         parts = []
         if has_team:
