@@ -174,6 +174,7 @@ def activities_to_reservations(
         laser_count = 0
         has_team = False
         quiz_minutes = 0
+        table_start_local = None  # Heure de la pause gâteau
 
         for a in acts:
             label = (a.get("label", "") or "").lower()
@@ -190,6 +191,13 @@ def activities_to_reservations(
             elif "quiz" in label or "quiz" in cat:
                 quiz_minutes += dur
 
+            # Détecter l'activité "Table réservée" = pause gâteau
+            if ("table" in label and "réservée" in label) or \
+               ("table" in label and "reserv" in label) or \
+               ("anniversaire" in cat and "table" in label):
+                if a.get("start_at"):
+                    table_start_local = _utc_to_local(a["start_at"])
+
         parts = []
         if has_team:
             parts.append("1H")
@@ -199,6 +207,13 @@ def activities_to_reservations(
             parts.append(f"{quiz_minutes} min Quiz")
 
         activities_str = " + ".join(parts) if parts else "Anniversaire"
+
+        # ── Pause gâteau (heure de début de la table) ─────────
+        break_time_str = ""
+        if table_start_local:
+            h = table_start_local.hour
+            m = table_start_local.minute
+            break_time_str = f"{h}h{m:02d}"
 
         # ── Nombre de participants (max parmi toutes les activités) ─
         nb_persons = max((a.get("qty", 0) or 0 for a in acts), default=0)
@@ -218,6 +233,7 @@ def activities_to_reservations(
             nb_persons=nb_persons,
             child_name="",      # Pas dans les données Qweekle
             child_age="",       # Pas dans les données Qweekle
+            break_time=break_time_str,
             comment=f"Status: {status}" if status else "",
         )
         reservations.append(reservation)
