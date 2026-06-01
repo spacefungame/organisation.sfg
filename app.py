@@ -213,8 +213,47 @@ def _render_sidebar() -> datetime.date:
             '<div class="sidebar-subtitle">Gestion des Anniversaires</div>',
             unsafe_allow_html=True,
         )
+        # ── Navigation par date ──────────────────────────────
+        if "nav_date" not in st.session_state:
+            st.session_state.nav_date = datetime.date.today()
 
-        selected = st.date_input("📅 Date du planning", value=datetime.date.today(), format="DD/MM/YYYY")
+        selected = st.date_input(
+            "📅 Date du planning",
+            value=st.session_state.nav_date,
+            format="DD/MM/YYYY",
+            key="date_picker",
+        )
+        # Synchroniser si l'utilisateur change via le calendrier
+        if selected != st.session_state.nav_date:
+            st.session_state.nav_date = selected
+            st.rerun()
+
+        # Flèches jour
+        col_pd, col_tj, col_nd = st.columns([1, 1, 1])
+        with col_pd:
+            if st.button("◀ Jour", use_container_width=True, key="prev_day"):
+                st.session_state.nav_date -= datetime.timedelta(days=1)
+                st.rerun()
+        with col_tj:
+            if st.button("Auj.", use_container_width=True, key="today"):
+                st.session_state.nav_date = datetime.date.today()
+                st.rerun()
+        with col_nd:
+            if st.button("Jour ▶", use_container_width=True, key="next_day"):
+                st.session_state.nav_date += datetime.timedelta(days=1)
+                st.rerun()
+
+        # Flèches semaine
+        col_pw, col_nw = st.columns(2)
+        with col_pw:
+            if st.button("◀◀ Semaine", use_container_width=True, key="prev_week"):
+                st.session_state.nav_date -= datetime.timedelta(weeks=1)
+                st.rerun()
+        with col_nw:
+            if st.button("Semaine ▶▶", use_container_width=True, key="next_week"):
+                st.session_state.nav_date += datetime.timedelta(weeks=1)
+                st.rerun()
+
         st.divider()
 
 
