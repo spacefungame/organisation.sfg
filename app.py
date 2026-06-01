@@ -542,16 +542,27 @@ def _render_table(reservations: list[Reservation]):
         </tr>
         """
 
-    st.markdown(
+    # Lire le CSS pour l'inliner dans st.html (iframe isolé)
+    css_path = ROOT / "assets" / "style.css"
+    try:
+        table_css = css_path.read_text(encoding="utf-8")
+    except FileNotFoundError:
+        table_css = ""
+
+    st.html(
         f"""
-        <div class="fade-in" style="overflow-x:auto;">
+        <style>
+        @import url('https://fonts.googleapis.com/css2?family=Inter:wght@300;400;500;600;700;800&display=swap');
+        body {{ margin: 0; padding: 0; font-family: 'Inter', sans-serif; background: transparent; }}
+        {table_css}
+        </style>
+        <div style="overflow-x:auto;">
         <table class="reservations-table">
             <thead>{hdr}</thead>
             <tbody>{rows}</tbody>
         </table>
         </div>
-        """,
-        unsafe_allow_html=True,
+        """
     )
 
 
