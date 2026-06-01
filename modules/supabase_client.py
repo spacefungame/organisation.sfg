@@ -140,11 +140,21 @@ def activities_to_reservations(
             if not any(_is_birthday_category(c) for c in categories):
                 continue
 
-        # ── Infos client (depuis la première activité) ────────
-        first = acts[0]
-        firstname = first.get("client_firstname", "")
-        lastname = first.get("client_lastname", "")
-        client_name = f"{lastname} {firstname}".strip() or "Inconnu"
+        # ── Infos client (chercher dans TOUTES les activités) ──
+        firstname = ""
+        lastname = ""
+        for a in acts:
+            fn = (a.get("client_firstname") or "").strip()
+            ln = (a.get("client_lastname") or "").strip()
+            if fn or ln:
+                firstname = fn
+                lastname = ln
+                break
+        client_name = f"{lastname} {firstname}".strip()
+        if not client_name:
+            # Afficher un identifiant partiel pour repérer la résa
+            short_id = order_id[-8:] if len(order_id) > 8 else order_id
+            client_name = f"⚠️ Client inconnu ({short_id})"
 
         # ── Plage horaire globale ─────────────────────────────
         start_times = [a["start_at"] for a in acts if a.get("start_at")]
@@ -190,11 +200,11 @@ def activities_to_reservations(
 
         activities_str = " + ".join(parts) if parts else "Anniversaire"
 
-        # ── Nombre de participants ────────────────────────────
-        nb_persons = first.get("qty", 0) or 0
+        # ── Nombre de participants (max parmi toutes les activités) ─
+        nb_persons = max((a.get("qty", 0) or 0 for a in acts), default=0)
 
         # ── Statut ────────────────────────────────────────────
-        status = first.get("global_status", "")
+        status = acts[0].get("global_status", "")
 
         # ── Construire la Reservation ─────────────────────────
         reservation = Reservation(
