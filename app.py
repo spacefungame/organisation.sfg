@@ -114,6 +114,14 @@ def _fetch_reservations(date_start: datetime.date, _data_source: str) -> list[di
     allocator = TableAllocator(tables=TABLES)
     reservations = allocator.allocate(reservations)
 
+    # ── Enrichissement Qweekle : compléter les noms clients manquants ──
+    try:
+        qweekle = QweekleClient()
+        if qweekle.is_configured():
+            reservations = qweekle.enrich_reservations(reservations)
+    except Exception:
+        pass  # Ne jamais bloquer le dashboard pour un échec d'enrichissement
+
     result = []
     for r in reservations:
         result.append({

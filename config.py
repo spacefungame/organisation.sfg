@@ -279,7 +279,7 @@ OPTIONS_COLUMNS = [
 # ║                    CONFIGURATION API QWEEKLE                 ║
 # ╚══════════════════════════════════════════════════════════════╝
 QWEEKLE_API_KEY = ""  # Renseignez votre clé API Qweekle ici
-QWEEKLE_BASE_URL = "https://api.qweekle.com/v1"  # URL de base
+QWEEKLE_BASE_URL = "https://api.qweekle.io/api"  # URL de base
 
 
 # ╔══════════════════════════════════════════════════════════════╗
