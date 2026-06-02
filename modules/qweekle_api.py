@@ -37,7 +37,13 @@ class QweekleClient:
 
     def __init__(self, api_key: str = None, base_url: str = None):
         # Priorité : paramètre > secrets Streamlit > config.py
-        self.api_key = api_key or st.secrets.get("QWEEKLE_API_KEY", "") or QWEEKLE_API_KEY
+        if api_key:
+            self.api_key = api_key
+        else:
+            try:
+                self.api_key = st.secrets["QWEEKLE_API_KEY"]
+            except (KeyError, FileNotFoundError, AttributeError):
+                self.api_key = QWEEKLE_API_KEY
         self.base_url = base_url or QWEEKLE_BASE_URL
 
     # ──────────────────────────────────────────────────────────
