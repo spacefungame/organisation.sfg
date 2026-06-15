@@ -506,10 +506,33 @@ def _render_table(reservations: list[Reservation]):
     """
 
     rows = ""
+
+    # ── Couleur unique par table ────────────────────────────
+    _TABLE_PALETTE = [
+        ("#dbeafe", "#1e40af"),   # bleu
+        ("#d1fae5", "#065f46"),   # vert
+        ("#fef3c7", "#92400e"),   # jaune
+        ("#fce7f3", "#9d174d"),   # rose
+        ("#e0e7ff", "#3730a3"),   # indigo
+        ("#fed7aa", "#9a3412"),   # orange
+        ("#ccfbf1", "#115e59"),   # teal
+        ("#f5d0fe", "#86198f"),   # violet
+        ("#fecaca", "#991b1b"),   # rouge
+        ("#d9f99d", "#3f6212"),   # lime
+    ]
+    from collections import Counter
+    table_counts = Counter(r.assigned_table for r in sorted_res if r.assigned_table)
+    multi_tables = {t for t, c in table_counts.items() if c > 1}
+    unique_tables = sorted(set(r.assigned_table for r in sorted_res if r.assigned_table))
+    table_colors = {tname: _TABLE_PALETTE[i % len(_TABLE_PALETTE)] for i, tname in enumerate(unique_tables)}
+
     for r in sorted_res:
-        # Table
+        # Table — badge coloré
         if r.assigned_table:
-            table_html = f'<strong>{r.assigned_table}</strong>'
+            bg, fg = table_colors.get(r.assigned_table, ("#f1f5f9", "#334155"))
+            bold = "700" if r.assigned_table in multi_tables else "600"
+            opa = "" if r.assigned_table in multi_tables else "opacity:0.75;"
+            table_html = f'<span style="display:inline-block;padding:2px 8px;border-radius:6px;background:{bg};color:{fg};font-weight:{bold};{opa}">{r.assigned_table}</span>'
         else:
             table_html = '<span class="badge badge-conflict">⚠️ CONFLIT</span>'
 
