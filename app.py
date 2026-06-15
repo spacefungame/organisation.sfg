@@ -9,6 +9,7 @@ from __future__ import annotations
 
 import datetime
 import pathlib
+import traceback
 
 import streamlit as st
 import requests
@@ -902,7 +903,9 @@ def main():
         raw = _fetch_reservations(selected_date, data_source, tables_hash)
         reservations = [_to_reservation(d) for d in raw]
     except Exception as e:
+        logger.exception("Erreur lors de l'exécution de l'application")
         st.error(f"❌ Erreur chargement : {e}")
+        st.code(traceback.format_exc())
         reservations = []
 
     if not demo:
