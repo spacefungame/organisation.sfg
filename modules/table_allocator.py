@@ -87,7 +87,7 @@ class TableAllocator:
                 reservation.assigned_table = best_table
                 
                 # Gérer la fusion (ex: "T1 + T2")
-                tables_to_book = [t.strip() for t in best_table.split("+")] if "+" in best_table else [best_table]
+                tables_to_book = best_table.split(" + ") if " + " in best_table else [best_table]
                 cap = sum(self.tables[t] for t in tables_to_book)
                 
                 for t in tables_to_book:
