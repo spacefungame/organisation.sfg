@@ -93,15 +93,23 @@ def _opt_cell(value: int) -> str:
     return ""
 
 
+def _get_tables() -> dict:
+    """Retourne la config des tables depuis session_state ou config.py."""
+    if "tables_config" not in st.session_state:
+        st.session_state["tables_config"] = dict(TABLES)
+    return st.session_state["tables_config"]
+
+
 # ══════════════════════════════════════════════════════════════
 # CHARGEMENT DES DONNÉES
 # ══════════════════════════════════════════════════════════════
 
 @st.cache_data(ttl=300, show_spinner=False)
-def _fetch_reservations(date_start: datetime.date, _data_source: str) -> list[dict]:
+def _fetch_reservations(date_start: datetime.date, _data_source: str, _tables_hash: str = "") -> list[dict]:
     """
     Récupère et alloue les tables. Renvoie une liste de dicts (cache-safe).
     _data_source: 'supabase', 'qweekle', ou 'demo'
+    _tables_hash: hash de la config tables pour invalider le cache si modifiée
     """
     if _data_source == "supabase":
         reservations = supabase_client.get_reservations_for_date(date_start, birthday_only=True)
@@ -111,7 +119,8 @@ def _fetch_reservations(date_start: datetime.date, _data_source: str) -> list[di
         from modules.demo_data import generate_demo_reservations
         reservations = generate_demo_reservations(date_start)
 
-    allocator = TableAllocator(tables=TABLES)
+    tables = _get_tables()
+    allocator = TableAllocator(tables=tables)
     reservations = allocator.allocate(reservations)
 
     # ── Enrichissement Qweekle : compléter les noms clients manquants ──
@@ -300,9 +309,46 @@ def _render_sidebar() -> datetime.date:
 
         st.divider()
 
-        with st.expander("⚙️ Configuration des tables"):
-            for name, cap in TABLES.items():
-                st.markdown(f"• **{name}** — {cap} places")
+        with st.expander("⚙️ Configuration des tables", expanded=False):
+            tables = _get_tables()
+            edited = dict(tables)  # copie de travail
+            to_delete = []
+
+            for tname in list(edited.keys()):
+                c1, c2, c3 = st.columns([3, 2, 1])
+                with c1:
+                    st.text(tname)
+                with c2:
+                    new_cap = st.number_input(
+                        "cap", value=edited[tname], min_value=1, max_value=50,
+                        label_visibility="collapsed", key=f"cap_{tname}",
+                    )
+                    edited[tname] = new_cap
+                with c3:
+                    if st.button("🗑️", key=f"del_{tname}"):
+                        to_delete.append(tname)
+
+            for t in to_delete:
+                edited.pop(t, None)
+
+            # Ajouter une table
+            c1, c2 = st.columns([3, 2])
+            with c1:
+                new_name = st.text_input("Nom", "", key="new_table_name",
+                                         placeholder="ex: T7")
+            with c2:
+                new_cap_val = st.number_input("Places", value=10, min_value=1,
+                                              max_value=50, key="new_table_cap")
+            if st.button("➕ Ajouter", use_container_width=True):
+                if new_name and new_name not in edited:
+                    edited[new_name] = new_cap_val
+
+            # Bouton sauvegarder
+            if st.button("💾 Enregistrer les tables", use_container_width=True,
+                         type="primary"):
+                st.session_state["tables_config"] = edited
+                st.cache_data.clear()
+                st.rerun()
 
         st.markdown(
             '<div class="sidebar-version">v1.0 — Gravity Center</div>',
@@ -350,7 +396,7 @@ def _render_header(date: datetime.date, demo: bool):
 def _render_kpis(reservations: list[Reservation]):
     total = len(reservations)
     persons = sum(r.nb_persons for r in reservations)
-    capacity = sum(TABLES.values())
+    capacity = sum(_get_tables().values())
     fill_pct = min(int(persons / capacity * 100), 100) if capacity else 0
     alerts = sum(1 for r in reservations if r.gmail_alerts)
 
@@ -393,7 +439,7 @@ def _render_timeline(reservations: list[Reservation]):
         color_map[r.id] = TIMELINE_COLORS[i % len(TIMELINE_COLORS)]
 
     # Toutes les tables du config + celles assignées
-    all_tables = list(TABLES.keys())
+    all_tables = list(_get_tables().keys())
     assigned = {r.assigned_table for r in reservations if r.assigned_table}
     tables_to_show = [t for t in all_tables if t in assigned]
     if not tables_to_show:
@@ -738,7 +784,7 @@ def _render_details(reservations: list[Reservation]):
 # ══════════════════════════════════════════════════════════════
 
 def _render_conflicts(reservations: list[Reservation]):
-    alloc = TableAllocator(tables=TABLES)
+    alloc = TableAllocator(tables=_get_tables())
     alloc.allocate(reservations)
     conflicts = alloc.get_conflicts()
     if not conflicts:
@@ -800,7 +846,8 @@ def main():
     _render_header(selected_date, demo)
 
     try:
-        raw = _fetch_reservations(selected_date, data_source)
+        tables_hash = str(sorted(_get_tables().items()))
+        raw = _fetch_reservations(selected_date, data_source, tables_hash)
         reservations = [_to_reservation(d) for d in raw]
     except Exception as e:
         st.error(f"❌ Erreur chargement : {e}")
