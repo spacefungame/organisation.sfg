@@ -9,13 +9,9 @@ qui a déjà servi. Cela évite au staff de devoir débarrasser et redresser
 une table en plein rush.
 
 Ordre de préférence pour chaque réservation :
-  1. Table non utilisée aujourd'hui, capacité ≥ groupe (taille optimale)
-  2. Table non utilisée aujourd'hui, capacité < groupe mais la plus grande
-     possible (seulement si aucune table de catégorie 1)
-  3. Table déjà utilisée aujourd'hui, libre sur le créneau, capacité ≥
-     groupe — on choisit celle avec le plus grand écart temporel
-  4. Table déjà utilisée, libre sur le créneau, trop petite (dernier recours)
-  5. Aucune table disponible → conflit
+  1. Table non utilisée aujourd'hui, capacité ≥ groupe (on choisit la plus petite possible pour économiser les grandes tables).
+  2. Table déjà utilisée aujourd'hui, libre sur le créneau, capacité ≥ groupe (on choisit celle avec le plus grand écart temporel).
+  3. Aucune table de capacité suffisante disponible → conflit.
 
 Intervalles semi-ouverts [start, end) : une réservation qui finit à 14h00
 ne chevauche PAS une réservation qui commence à 14h00 (back-to-back OK).
@@ -116,59 +112,42 @@ class TableAllocator:
         Choisit la meilleure table en MINIMISANT les changements de table.
 
         Catégorise les tables disponibles (sans chevauchement) :
-          - unused_fit   : jamais utilisée + capacité suffisante
-          - unused_small : jamais utilisée + trop petite
-          - reused_fit   : déjà utilisée + capacité suffisante
-          - reused_small : déjà utilisée + trop petite
+          - unused_fit : jamais utilisée + capacité suffisante
+          - reused_fit : déjà utilisée + capacité suffisante
         """
         unused_fit = []    # (nom, capacité)
-        unused_small = []  # (nom, capacité)
         reused_fit = []    # (nom, capacité, gap_minutes)
-        reused_small = []  # (nom, capacité, gap_minutes)
 
         for table_name, capacity in self.tables.items():
+            # Ne jamais utiliser une table trop petite
+            if capacity < nb_persons:
+                continue
+
             # Vérifier que le créneau est libre
             if not self._is_free(table_name, start_time, end_time):
                 continue
 
-            fits = capacity >= nb_persons
             used_today = len(self._occupancy[table_name]) > 0
 
             if not used_today:
-                if fits:
-                    unused_fit.append((table_name, capacity))
-                else:
-                    unused_small.append((table_name, capacity))
+                unused_fit.append((table_name, capacity))
             else:
                 gap = self._min_gap_minutes(
                     table_name, start_time, end_time
                 )
-                if fits:
-                    reused_fit.append((table_name, capacity, gap))
-                else:
-                    reused_small.append((table_name, capacity, gap))
+                reused_fit.append((table_name, capacity, gap))
 
         # 1. Table non utilisée, capacité OK → plus petite en premier
         if unused_fit:
             unused_fit.sort(key=lambda t: t[1])
             return unused_fit[0][0]
 
-        # 2. Table non utilisée, trop petite → plus grande en premier
-        if unused_small:
-            unused_small.sort(key=lambda t: -t[1])
-            return unused_small[0][0]
-
-        # 3. Table réutilisée, capacité OK → plus grand gap en premier
+        # 2. Table réutilisée, capacité OK → plus grand gap en premier
         if reused_fit:
             reused_fit.sort(key=lambda t: -t[2])
             return reused_fit[0][0]
 
-        # 4. Table réutilisée, trop petite → plus grand gap en premier
-        if reused_small:
-            reused_small.sort(key=lambda t: -t[2])
-            return reused_small[0][0]
-
-        # 5. Aucune table libre → conflit
+        # 3. Aucune table libre et de taille suffisante → conflit
         return None
 
     def _is_free(
