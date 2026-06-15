@@ -11,6 +11,7 @@ import datetime
 import pathlib
 
 import streamlit as st
+import requests
 
 from config import (
     TABLES,
@@ -94,10 +95,57 @@ def _opt_cell(value: int) -> str:
 
 
 def _get_tables() -> dict:
-    """Retourne la config des tables depuis session_state ou config.py."""
+    """Retourne la config des tables (session_state → Supabase → config.py)."""
     if "tables_config" not in st.session_state:
-        st.session_state["tables_config"] = dict(TABLES)
+        # Essayer de charger depuis Supabase
+        loaded = _load_tables_from_supabase()
+        st.session_state["tables_config"] = loaded if loaded else dict(TABLES)
     return st.session_state["tables_config"]
+
+
+def _load_tables_from_supabase() -> dict | None:
+    """Charge la config tables depuis Supabase app_settings."""
+    try:
+        creds = supabase_client._get_credentials()
+        if not creds:
+            return None
+        url, key = creds
+        r = requests.get(
+            f"{url}/rest/v1/app_settings",
+            headers={"apikey": key, "Authorization": f"Bearer {key}"},
+            params={"key": "eq.tables", "select": "value"},
+            timeout=5,
+        )
+        if r.ok and r.json():
+            data = r.json()[0]["value"]
+            # Convertir les valeurs en int (JSONB peut les stocker en float)
+            return {k: int(v) for k, v in data.items()}
+    except Exception:
+        pass
+    return None
+
+
+def _save_tables_to_supabase(tables: dict) -> bool:
+    """Sauvegarde la config tables dans Supabase app_settings."""
+    try:
+        creds = supabase_client._get_credentials()
+        if not creds:
+            return False
+        url, key = creds
+        r = requests.post(
+            f"{url}/rest/v1/app_settings",
+            headers={
+                "apikey": key,
+                "Authorization": f"Bearer {key}",
+                "Content-Type": "application/json",
+                "Prefer": "resolution=merge-duplicates",
+            },
+            json={"key": "tables", "value": tables},
+            timeout=5,
+        )
+        return r.ok
+    except Exception:
+        return False
 
 
 # ══════════════════════════════════════════════════════════════
@@ -347,6 +395,10 @@ def _render_sidebar() -> datetime.date:
             if st.button("💾 Enregistrer les tables", use_container_width=True,
                          type="primary"):
                 st.session_state["tables_config"] = edited
+                if _save_tables_to_supabase(edited):
+                    st.success("✅ Tables sauvegardées !")
+                else:
+                    st.warning("⚠️ Sauvegardé en session uniquement.")
                 st.cache_data.clear()
                 st.rerun()
 
