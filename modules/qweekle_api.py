@@ -132,6 +132,31 @@ class QweekleClient:
             logger.error("Erreur récupération client %s : %s", client_id, e)
             return {}
 
+    def get_client_subs(self, client_id: str) -> list[dict]:
+        """
+        Récupère les sous-comptes (enfants) d'un client.
+
+        GET /clientsubs?filter[client_id]=...
+        Retourne une liste de dicts avec firstname, lastname, birthday_at.
+        """
+        try:
+            response = self._fetch_from_api(
+                "/clientsubs",
+                params={"filter[client_id]": client_id},
+            )
+            subs = response.get("data", [])
+            if isinstance(subs, list):
+                logger.info(
+                    "Client %s : %d sous-compte(s) trouvé(s).",
+                    client_id, len(subs),
+                )
+                return subs
+            return []
+        except Exception as e:
+            # 404 = pas de sous-comptes, c'est normal
+            logger.debug("Pas de sous-comptes pour %s : %s", client_id, e)
+            return []
+
     # ──────────────────────────────────────────────────────────
     #  Enrichissement des réservations
     # ──────────────────────────────────────────────────────────
@@ -219,6 +244,63 @@ class QweekleClient:
                         if qty and qty > 0:
                             reservation.nb_persons = int(qty)
                         break
+
+                # ── Étape 5 : prénom et âge de l'enfant ───────────
+                if client_id and not reservation.child_name:
+                    subs = self.get_client_subs(client_id)
+                    if subs:
+                        # S'il y a un seul enfant, c'est lui
+                        # S'il y en a plusieurs, choisir celui dont
+                        # l'anniversaire est le plus proche de la date
+                        best_sub = subs[0]
+                        if len(subs) > 1:
+                            ref = reservation.date
+                            best_dist = 999
+                            for s in subs:
+                                bday_str = s.get("birthday_at", "")
+                                if bday_str:
+                                    try:
+                                        bd = datetime.date.fromisoformat(
+                                            bday_str[:10]
+                                        )
+                                        # Distance entre le jour/mois de
+                                        # naissance et la date de résa
+                                        d = abs(
+                                            (ref.month - bd.month) * 30
+                                            + (ref.day - bd.day)
+                                        )
+                                        if d < best_dist:
+                                            best_dist = d
+                                            best_sub = s
+                                    except (ValueError, TypeError):
+                                        pass
+
+                        # Mettre à jour prénom
+                        child_fn = (best_sub.get("firstname") or "").strip()
+                        if child_fn:
+                            reservation.child_name = child_fn
+
+                        # Calculer l'âge à la date de la réservation
+                        bday_str = best_sub.get("birthday_at", "")
+                        if bday_str:
+                            try:
+                                bd = datetime.date.fromisoformat(
+                                    bday_str[:10]
+                                )
+                                age = (
+                                    reservation.date.year - bd.year
+                                    - (
+                                        (reservation.date.month, reservation.date.day)
+                                        < (bd.month, bd.day)
+                                    )
+                                )
+                                reservation.child_age = str(age)
+                                logger.info(
+                                    "Enfant : %s, %s ans",
+                                    child_fn, age,
+                                )
+                            except (ValueError, TypeError):
+                                pass
 
             except Exception as e:
                 logger.error(
