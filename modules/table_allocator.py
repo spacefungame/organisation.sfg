@@ -1,9 +1,21 @@
 """
 Algorithme d'allocation de tables - Gravity Center
 ====================================================
-Utilise un algorithme Best-Fit pour attribuer la plus petite table
-disponible qui peut accueillir le groupe, en évitant les chevauchements
-de créneaux horaires.
+Priorité : MINIMISER LES CHANGEMENTS DE TABLE en cours de journée.
+
+On préfère utiliser une table encore inutilisée dans la journée (même si
+elle est trop grande pour le groupe) plutôt que de réutiliser une table
+qui a déjà servi. Cela évite au staff de devoir débarrasser et redresser
+une table en plein rush.
+
+Ordre de préférence pour chaque réservation :
+  1. Table non utilisée aujourd'hui, capacité ≥ groupe (taille optimale)
+  2. Table non utilisée aujourd'hui, capacité < groupe mais la plus grande
+     possible (seulement si aucune table de catégorie 1)
+  3. Table déjà utilisée aujourd'hui, libre sur le créneau, capacité ≥
+     groupe — on choisit celle avec le plus grand écart temporel
+  4. Table déjà utilisée, libre sur le créneau, trop petite (dernier recours)
+  5. Aucune table disponible → conflit
 
 Intervalles semi-ouverts [start, end) : une réservation qui finit à 14h00
 ne chevauche PAS une réservation qui commence à 14h00 (back-to-back OK).
@@ -41,13 +53,6 @@ class TableAllocator:
         """
         Attribue une table à chaque réservation pour une journée.
 
-        Algorithme :
-        1. Trier les réservations par heure de début
-        2. Pour chaque réservation :
-           a. Trouver les tables libres sur [start_time, end_time)
-           b. Parmi celles avec capacité >= nb_persons, choisir la plus petite
-           c. Sinon → marquer comme conflit
-
         Returns:
             Liste des réservations avec assigned_table mis à jour.
         """
@@ -70,27 +75,30 @@ class TableAllocator:
                 reservation.nb_persons,
             )
 
-            available = self._get_available_tables(start_time, end_time)
-            best_table = self._find_best_table(reservation.nb_persons, available)
+            best_table = self._find_best_table_spread(
+                reservation.nb_persons, start_time, end_time
+            )
 
             if best_table:
                 reservation.assigned_table = best_table
                 self._occupancy[best_table].append(
                     (start_time, end_time, reservation)
                 )
+                nb_uses = len(self._occupancy[best_table])
                 logger.info(
-                    "✓ '%s' → Table %s (cap. %d, groupe de %d)",
+                    "✓ '%s' → Table %s (cap. %d, groupe de %d, usage n°%d)",
                     reservation.client_name,
                     best_table,
                     self.tables[best_table],
                     reservation.nb_persons,
+                    nb_uses,
                 )
             else:
                 conflit_msg = (
                     f"{reservation.client_name} "
                     f"({reservation.nb_persons} pers., "
                     f"{start_time.strftime('%H:%M')}–{end_time.strftime('%H:%M')}) : "
-                    f"aucune table disponible avec capacité suffisante."
+                    f"aucune table disponible."
                 )
                 reservation.assigned_table = None
                 self._conflicts.append(conflit_msg)
@@ -98,53 +106,108 @@ class TableAllocator:
 
         return sorted_reservations
 
-    def _get_available_tables(
+    def _find_best_table_spread(
         self,
-        time_start: datetime.time,
-        time_end: datetime.time,
-    ) -> list:
-        """
-        Retourne les tables libres pour un créneau donné.
-
-        Returns:
-            Liste de tuples (nom_table, capacité) triée par capacité croissante.
-        """
-        available = []
-
-        for table_name, capacity in self.tables.items():
-            is_free = True
-            for occ_start, occ_end, _ in self._occupancy[table_name]:
-                if self._check_time_overlap(time_start, time_end, occ_start, occ_end):
-                    is_free = False
-                    break
-            if is_free:
-                available.append((table_name, capacity))
-
-        available.sort(key=lambda t: t[1])
-        return available
-
-    def _find_best_table(
-        self,
-        total_persons: int,
-        available_tables: list,
+        nb_persons: int,
+        start_time: datetime.time,
+        end_time: datetime.time,
     ) -> Optional[str]:
         """
-        Best-fit : plus petite table disponible avec capacité >= total_persons.
+        Choisit la meilleure table en MINIMISANT les changements de table.
+
+        Catégorise les tables disponibles (sans chevauchement) :
+          - unused_fit   : jamais utilisée + capacité suffisante
+          - unused_small : jamais utilisée + trop petite
+          - reused_fit   : déjà utilisée + capacité suffisante
+          - reused_small : déjà utilisée + trop petite
         """
-        for table_name, capacity in available_tables:
-            if capacity >= total_persons:
-                return table_name
+        unused_fit = []    # (nom, capacité)
+        unused_small = []  # (nom, capacité)
+        reused_fit = []    # (nom, capacité, gap_minutes)
+        reused_small = []  # (nom, capacité, gap_minutes)
+
+        for table_name, capacity in self.tables.items():
+            # Vérifier que le créneau est libre
+            if not self._is_free(table_name, start_time, end_time):
+                continue
+
+            fits = capacity >= nb_persons
+            used_today = len(self._occupancy[table_name]) > 0
+
+            if not used_today:
+                if fits:
+                    unused_fit.append((table_name, capacity))
+                else:
+                    unused_small.append((table_name, capacity))
+            else:
+                gap = self._min_gap_minutes(
+                    table_name, start_time, end_time
+                )
+                if fits:
+                    reused_fit.append((table_name, capacity, gap))
+                else:
+                    reused_small.append((table_name, capacity, gap))
+
+        # 1. Table non utilisée, capacité OK → plus petite en premier
+        if unused_fit:
+            unused_fit.sort(key=lambda t: t[1])
+            return unused_fit[0][0]
+
+        # 2. Table non utilisée, trop petite → plus grande en premier
+        if unused_small:
+            unused_small.sort(key=lambda t: -t[1])
+            return unused_small[0][0]
+
+        # 3. Table réutilisée, capacité OK → plus grand gap en premier
+        if reused_fit:
+            reused_fit.sort(key=lambda t: -t[2])
+            return reused_fit[0][0]
+
+        # 4. Table réutilisée, trop petite → plus grand gap en premier
+        if reused_small:
+            reused_small.sort(key=lambda t: -t[2])
+            return reused_small[0][0]
+
+        # 5. Aucune table libre → conflit
         return None
 
-    @staticmethod
-    def _check_time_overlap(
-        start1: datetime.time, end1: datetime.time,
-        start2: datetime.time, end2: datetime.time,
+    def _is_free(
+        self,
+        table_name: str,
+        start_time: datetime.time,
+        end_time: datetime.time,
     ) -> bool:
+        """Vérifie qu'une table est libre sur le créneau [start, end)."""
+        for occ_start, occ_end, _ in self._occupancy[table_name]:
+            if start_time < occ_end and occ_start < end_time:
+                return False
+        return True
+
+    def _min_gap_minutes(
+        self,
+        table_name: str,
+        start_time: datetime.time,
+        end_time: datetime.time,
+    ) -> int:
         """
-        Vérifie le chevauchement de deux créneaux semi-ouverts [start, end).
+        Calcule le plus petit écart (en minutes) entre le nouveau créneau
+        et les créneaux existants de cette table. Plus le gap est grand,
+        plus le staff a du temps pour préparer.
         """
-        return start1 < end2 and start2 < end1
+        min_gap = 9999
+        for occ_start, occ_end, _ in self._occupancy[table_name]:
+            # Écart = temps entre fin d'un créneau et début de l'autre
+            gap1 = self._time_diff_min(occ_end, start_time)   # occ finit avant
+            gap2 = self._time_diff_min(end_time, occ_start)   # occ commence après
+            gap = max(0, min(gap1, gap2))
+            if gap < min_gap:
+                min_gap = gap
+        return min_gap
+
+    @staticmethod
+    def _time_diff_min(t1: datetime.time, t2: datetime.time) -> int:
+        """Différence t2 - t1 en minutes (peut être négatif)."""
+        return (t2.hour * 60 + t2.minute) - (t1.hour * 60 + t1.minute)
 
     def get_conflicts(self) -> list:
         """Retourne la liste des conflits détectés."""
