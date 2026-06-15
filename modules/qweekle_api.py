@@ -37,14 +37,28 @@ class QweekleClient:
 
     def __init__(self, api_key: str = None, base_url: str = None):
         # Priorité : paramètre > secrets Streamlit > config.py
-        if api_key:
-            self.api_key = api_key
-        else:
-            try:
-                self.api_key = st.secrets["QWEEKLE_API_KEY"]
-            except (KeyError, FileNotFoundError, AttributeError):
-                self.api_key = QWEEKLE_API_KEY
+        self.api_key = api_key or self._read_api_key()
         self.base_url = base_url or QWEEKLE_BASE_URL
+
+    @staticmethod
+    def _read_api_key() -> str:
+        """Cherche la clé API dans plusieurs emplacements des secrets."""
+        # Tenter plusieurs formats TOML possibles
+        for reader in [
+            lambda: st.secrets["QWEEKLE_API_KEY"],           # Niveau racine
+            lambda: st.secrets["qweekle"]["api_key"],        # [qweekle] section
+            lambda: st.secrets["qweekle"]["QWEEKLE_API_KEY"],# [qweekle] section alt
+            lambda: st.secrets["supabase"]["QWEEKLE_API_KEY"],# sous [supabase] par erreur
+        ]:
+            try:
+                val = reader()
+                if val and str(val).strip():
+                    logger.info("Clé API Qweekle trouvée dans les secrets.")
+                    return str(val).strip()
+            except (KeyError, FileNotFoundError, AttributeError, TypeError):
+                continue
+        # Fallback config.py
+        return QWEEKLE_API_KEY
 
     # ──────────────────────────────────────────────────────────
     #  État de la configuration
@@ -126,14 +140,13 @@ class QweekleClient:
         self, reservations: list[Reservation]
     ) -> list[Reservation]:
         """
-        Enrichit les réservations dont le nom client est manquant.
+        Enrichit TOUTES les réservations via l'API Qweekle.
 
-        Pour chaque réservation contenant 'inconnu' (insensible à la casse) :
+        Pour chaque réservation :
           1. Appelle get_order_details(order_id) pour obtenir le client_id
           2. Appelle get_client(client_id) pour obtenir nom/prénom
-          3. Met à jour client_name sur la réservation
+          3. Met à jour client_name avec le vrai nom du client
           4. Met à jour nb_persons depuis la quantité du pack principal
-             si la valeur actuelle est 0 ou absente
 
         Ne bloque pas l'interface : en cas d'erreur, on log et on passe.
         """
@@ -141,40 +154,30 @@ class QweekleClient:
             logger.info("Enrichissement ignoré — API Qweekle non configurée.")
             return reservations
 
+        logger.info("Début enrichissement de %d réservations via API Qweekle.", len(reservations))
+
         # Cache local pour éviter les appels en double dans un même batch
+        _order_cache: dict[str, dict] = {}
         _client_cache: dict[str, dict] = {}
 
         for reservation in reservations:
-            # Vérifier si le nom client est inconnu
-            if "inconnu" not in reservation.client_name.lower():
-                continue
-
             try:
-                logger.info(
-                    "Enrichissement réservation %s (client actuel : %s)",
-                    reservation.id,
-                    reservation.client_name,
-                )
-
                 # ── Étape 1 : récupérer la commande ──────────────
-                order = self.get_order_details(reservation.id)
+                order_id = reservation.id
+                if order_id in _order_cache:
+                    order = _order_cache[order_id]
+                else:
+                    order = self.get_order_details(order_id)
+                    _order_cache[order_id] = order
+
                 if not order:
-                    logger.warning(
-                        "Commande %s vide — enrichissement impossible.",
-                        reservation.id,
-                    )
                     continue
 
                 # ── Étape 2 : récupérer le client ────────────────
                 client_id = order.get("client_id")
                 if not client_id:
-                    logger.warning(
-                        "Pas de client_id dans la commande %s.",
-                        reservation.id,
-                    )
                     continue
 
-                # Utiliser le cache local si déjà récupéré
                 if client_id in _client_cache:
                     client = _client_cache[client_id]
                 else:
@@ -182,49 +185,39 @@ class QweekleClient:
                     _client_cache[client_id] = client
 
                 if not client:
-                    logger.warning(
-                        "Client %s introuvable.", client_id
-                    )
                     continue
 
                 # ── Étape 3 : mettre à jour le nom ───────────────
                 firstname = (client.get("firstname") or "").strip()
                 lastname = (client.get("lastname") or "").strip()
-                full_name = f"{lastname} {firstname}".strip()
+                full_name = f"{firstname} {lastname}".strip()
 
                 if full_name:
-                    logger.info(
-                        "Nom mis à jour : '%s' → '%s'",
-                        reservation.client_name,
-                        full_name,
-                    )
+                    old_name = reservation.client_name
                     reservation.client_name = full_name
+                    if old_name != full_name:
+                        logger.info("Nom : '%s' → '%s'", old_name, full_name)
 
-                # ── Étape 4 : mettre à jour nb_persons si besoin ─
-                # Chercher l'item principal de type PACK dans la commande
+                # ── Étape 4 : mettre à jour nb_persons ───────────
                 items = order.get("items", [])
                 for item in items:
                     item_type = (item.get("type") or "").upper()
-                    if item_type == "PACK":
-                        qty = item.get("qty") or item.get("quantity") or 0
-                        if qty and (reservation.nb_persons == 0):
-                            logger.info(
-                                "nb_persons mis à jour : %d → %d",
-                                reservation.nb_persons,
-                                qty,
-                            )
+                    parent_id = item.get("parent_id")
+                    # Prendre le PACK principal (sans parent)
+                    if item_type == "PACK" and not parent_id:
+                        qty = item.get("qty") or 0
+                        if qty and qty > 0:
                             reservation.nb_persons = int(qty)
-                        break  # On ne prend que le premier PACK
+                        break
 
             except Exception as e:
-                # Ne jamais bloquer le dashboard pour un échec d'enrichissement
                 logger.error(
                     "Erreur enrichissement réservation %s : %s",
-                    reservation.id,
-                    e,
+                    reservation.id, e,
                 )
                 continue
 
+        logger.info("Enrichissement terminé.")
         return reservations
 
     # ──────────────────────────────────────────────────────────
