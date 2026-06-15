@@ -351,6 +351,9 @@ class Reservation:
     arrived: bool = False                     # Col S
     paid: bool = False                        # Col T
 
+    # Catégorie d'âge (détectée depuis le label du pack Qweekle)
+    age_category: str = ""                    # "enfant", "ado", "adulte" ou ""
+
     # Alertes Gmail (ajoutées par l'application)
     gmail_alerts: list = field(default_factory=list)
 

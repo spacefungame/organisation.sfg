@@ -252,17 +252,36 @@ class QweekleClient:
                     if old_name != full_name:
                         logger.info("Nom : '%s' → '%s'", old_name, full_name)
 
-                # ── Étape 4 : mettre à jour nb_persons ───────────
+                # ── Étape 4 : nb_persons + catégorie d'âge ────────
                 items = order.get("items", [])
                 for item in items:
                     item_type = (item.get("type") or "").upper()
                     parent_id = item.get("parent_id")
                     # Prendre le PACK principal (sans parent)
                     if item_type == "PACK" and not parent_id:
+                        pack_label = (item.get("label") or "").lower()
                         qty = item.get("qty") or 0
                         if qty and qty > 0:
                             reservation.nb_persons = int(qty)
-                        break
+
+                        # Détecter la catégorie d'âge depuis le label
+                        if not reservation.age_category:
+                            if re.search(r"7\s*[-–]\s*12", pack_label):
+                                reservation.age_category = "enfant"
+                            elif re.search(r"13\s*[-–]\s*18", pack_label):
+                                reservation.age_category = "ado"
+                            elif ("+18" in pack_label
+                                  or "adulte" in pack_label
+                                  or "adult" in pack_label):
+                                reservation.age_category = "adulte"
+
+                        # Ne pas break ici : continuer à chercher
+                        # dans les autres PACKs au cas où le premier
+                        # est un brownie et pas l'activité
+                        if any(kw in pack_label for kw in [
+                            "laser", "team", "quiz", "anniversaire",
+                        ]):
+                            break
 
                 # ── Étape 5 : prénom et âge de l'enfant ───────────
                 if client_id and not reservation.child_name:

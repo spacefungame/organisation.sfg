@@ -149,6 +149,7 @@ def _fetch_reservations(date_start: datetime.date, _data_source: str) -> list[di
             "comment": r.comment,
             "arrived": r.arrived,
             "paid": r.paid,
+            "age_category": r.age_category,
             "gmail_alerts": [
                 {"subject": a.subject, "sender": a.sender, "date": a.date,
                  "snippet": a.snippet, "confidence": a.confidence,
@@ -189,6 +190,7 @@ def _to_reservation(d: dict) -> Reservation:
         comment=d["comment"],
         arrived=d["arrived"],
         paid=d["paid"],
+        age_category=d.get("age_category", ""),
         gmail_alerts=[GmailAlert(**a) for a in d["gmail_alerts"]],
     )
 
@@ -524,10 +526,19 @@ def _render_table(reservations: list[Reservation]):
         # Commentaire tronqué
         comment_display = r.comment[:30] + "…" if len(r.comment) > 30 else r.comment
 
+        # Badge catégorie d'âge
+        age_badge = ""
+        if r.age_category == "enfant":
+            age_badge = '<span style="display:inline-block;font-size:0.65rem;padding:1px 6px;border-radius:8px;background:#d1fae5;color:#065f46;margin-left:4px;">7-12</span>'
+        elif r.age_category == "ado":
+            age_badge = '<span style="display:inline-block;font-size:0.65rem;padding:1px 6px;border-radius:8px;background:#fed7aa;color:#9a3412;margin-left:4px;">13-18</span>'
+        elif r.age_category == "adulte":
+            age_badge = '<span style="display:inline-block;font-size:0.65rem;padding:1px 6px;border-radius:8px;background:#bfdbfe;color:#1e40af;margin-left:4px;">+18</span>'
+
         rows += f"""
         <tr>
             <td class="col-heure"><strong>{_fmt_heure_col(r)}</strong></td>
-            <td class="client-name">{r.client_name}</td>
+            <td class="client-name">{r.client_name} {age_badge}</td>
             <td>{act_html}</td>
             <td style="text-align:center"><strong>{r.nb_persons}</strong></td>
             <td>{table_html}</td>
