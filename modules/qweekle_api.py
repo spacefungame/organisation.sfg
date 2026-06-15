@@ -20,6 +20,7 @@ Fournit :
 
 import datetime
 import logging
+import re
 
 import requests
 import streamlit as st
@@ -357,12 +358,29 @@ class QweekleClient:
                             break
 
                     if matched_field:
+                        # Pour brownie et gâteau de crêpes, extraire
+                        # la taille depuis le label au lieu de qty
+                        effective_qty = int(qty)
+                        raw_label = item.get("label", "")
+
+                        if matched_field == "gateau_crepes":
+                            # "Gâteau 20 Crêpes" → 20
+                            m = re.search(r"(\d+)\s*cr[êe]pe", raw_label, re.I)
+                            if m:
+                                effective_qty = int(m.group(1))
+
+                        elif matched_field == "brownie":
+                            # "pour 10 personnes" → 10
+                            m = re.search(r"pour\s*(\d+)", raw_label, re.I)
+                            if m:
+                                effective_qty = int(m.group(1))
+
                         current = getattr(reservation, matched_field, 0)
-                        setattr(reservation, matched_field, int(qty))
-                        if int(qty) != current:
+                        setattr(reservation, matched_field, effective_qty)
+                        if effective_qty != current:
                             logger.info(
                                 "Option %s = %d (label: %s)",
-                                matched_field, int(qty), item.get("label", "")[:50],
+                                matched_field, effective_qty, raw_label[:60],
                             )
 
             except Exception as e:
