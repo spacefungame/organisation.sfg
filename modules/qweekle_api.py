@@ -192,6 +192,16 @@ class QweekleClient:
                 lastname = (client.get("lastname") or "").strip()
                 full_name = f"{firstname} {lastname}".strip()
 
+                # Fallback : nom de société (clients entreprise)
+                if not full_name:
+                    full_name = (client.get("society") or "").strip()
+
+                # Fallback ultime : partie avant @ de l'email
+                if not full_name:
+                    email = (client.get("email") or "").strip()
+                    if email and "@" in email:
+                        full_name = email.split("@")[0].replace(".", " ").title()
+
                 if full_name:
                     old_name = reservation.client_name
                     reservation.client_name = full_name
