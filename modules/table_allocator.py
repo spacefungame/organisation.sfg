@@ -75,17 +75,32 @@ class TableAllocator:
                 reservation.nb_persons, start_time, end_time
             )
 
+
+
+            # Si aucune table simple n'est assez grande, chercher une paire
+            if not best_table:
+                best_table = self._find_merged_tables(
+                    reservation.nb_persons, start_time, end_time
+                )
+
             if best_table:
                 reservation.assigned_table = best_table
-                self._occupancy[best_table].append(
-                    (start_time, end_time, reservation)
-                )
-                nb_uses = len(self._occupancy[best_table])
+                
+                # Gérer la fusion (ex: "T1 + T2")
+                tables_to_book = [t.strip() for t in best_table.split("+")] if "+" in best_table else [best_table]
+                cap = sum(self.tables[t] for t in tables_to_book)
+                
+                for t in tables_to_book:
+                    self._occupancy[t].append(
+                        (start_time, end_time, reservation)
+                    )
+                    
+                nb_uses = max(len(self._occupancy[t]) for t in tables_to_book)
                 logger.info(
                     "✓ '%s' → Table %s (cap. %d, groupe de %d, usage n°%d)",
                     reservation.client_name,
                     best_table,
-                    self.tables[best_table],
+                    cap,
                     reservation.nb_persons,
                     nb_uses,
                 )
@@ -148,6 +163,43 @@ class TableAllocator:
             return reused_fit[0][0]
 
         # 3. Aucune table libre et de taille suffisante → conflit
+        return None
+
+    def _find_merged_tables(
+        self,
+        nb_persons: int,
+        start_time: datetime.time,
+        end_time: datetime.time,
+    ) -> Optional[str]:
+        """
+        Cherche deux tables adjacentes si aucune table simple ne suffit.
+        Ordre de préférence défini par les règles du centre.
+        """
+        preferred_pairs = [
+            ("STG-", "STG+"),
+            ("T1", "T2"),
+            ("T2", "T3"),
+            ("T3", "T4"),
+            ("T4", "T5"),
+            ("T5", "T6"),
+            ("R1", "R2"),
+            ("R2", "R3"),
+            ("R3", "R4"),
+        ]
+
+        for t1, t2 in preferred_pairs:
+            # Vérifier que les deux tables existent dans la configuration actuelle
+            if t1 not in self.tables or t2 not in self.tables:
+                continue
+                
+            # Vérifier qu'elles sont libres toutes les deux
+            if not self._is_free(t1, start_time, end_time) or not self._is_free(t2, start_time, end_time):
+                continue
+                
+            combined_capacity = self.tables[t1] + self.tables[t2]
+            if combined_capacity >= nb_persons:
+                return f"{t1} + {t2}"
+                
         return None
 
     def _is_free(
