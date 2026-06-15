@@ -31,6 +31,24 @@ logger = logging.getLogger(__name__)
 # Timeout global pour tous les appels API (en secondes)
 _API_TIMEOUT = 10
 
+# ── Mapping labels Qweekle → champs option de la Reservation ──
+# Chaque règle : (mots-clés requis, mots-clés exclus, champ Reservation)
+# Le premier match gagne, donc les règles plus spécifiques sont en premier.
+_OPTIONS_RULES = [
+    # Gâteau de crêpes AVANT crêpes (plus spécifique)
+    (["gateau de crepe", "gâteau de crêpe"],  [],     "gateau_crepes"),
+    (["brownie"],                              [],     "brownie"),
+    (["donut"],                                [],     "donuts"),
+    (["bonbon"],                               [],     "bonbons"),
+    (["kidibul", "champagne pour enfant"],      [],     "kidibul"),
+    (["chips"],                                [],     "chips"),
+    # Crêpes simples (exclure "gâteau")
+    (["crêpe", "crepe"],                       ["gateau", "gâteau"],  "crepes"),
+    # Granités : distinguer 200 et 350
+    (["granit"],                               ["350", "yard"],       "granite_200"),
+    (["granit"],                               ["200", "gobelet"],    "granite_350"),
+]
+
 
 class QweekleClient:
     """Client pour l'API Qweekle avec enrichissement des données."""
@@ -301,6 +319,51 @@ class QweekleClient:
                                 )
                             except (ValueError, TypeError):
                                 pass
+
+                # ── Étape 6 : options / produits achetés ──────────
+                items = order.get("items", [])
+                for item in items:
+                    itype = (item.get("type") or "").upper()
+                    # Ignorer dépôts, vouchers, et items sans label
+                    if itype in ("DEPOSIT", "G_DEPOSIT", "PAID_DEPOSIT", "VOUCHER"):
+                        continue
+                    label = (item.get("label") or "").lower()
+                    if not label:
+                        continue
+                    qty = item.get("qty") or 0
+                    if qty <= 0:
+                        continue
+
+                    # Ignorer les packs d'activité principaux
+                    skip_activity = [
+                        "laser", "team", "quiz", "accueil",
+                        "acompte", "deduction", "déduction",
+                        "nourriture externe", "anniversaire",
+                        "table réserv", "table reserv",
+                        "a deduire", "à déduire",
+                    ]
+                    # Un item est une activité s'il contient un mot-clé
+                    # d'activité ET qu'il ne matche aucune règle food
+                    is_activity = any(kw in label for kw in skip_activity)
+
+                    # Chercher un match dans les règles options
+                    matched_field = None
+                    for keywords, excludes, field in _OPTIONS_RULES:
+                        if any(kw in label for kw in keywords):
+                            # Vérifier les exclusions
+                            if excludes and any(ex in label for ex in excludes):
+                                continue
+                            matched_field = field
+                            break
+
+                    if matched_field:
+                        current = getattr(reservation, matched_field, 0)
+                        setattr(reservation, matched_field, int(qty))
+                        if int(qty) != current:
+                            logger.info(
+                                "Option %s = %d (label: %s)",
+                                matched_field, int(qty), item.get("label", "")[:50],
+                            )
 
             except Exception as e:
                 logger.error(
