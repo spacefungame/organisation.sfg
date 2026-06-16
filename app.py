@@ -154,15 +154,15 @@ def _save_tables_to_supabase(tables: dict) -> bool:
 # ══════════════════════════════════════════════════════════════
 
 @st.cache_data(ttl=300, show_spinner=False)
-def _fetch_reservations(date_start: datetime.date, _data_source: str, _tables_hash: str = "") -> list[dict]:
+def _fetch_reservations(date_start: datetime.date, data_source: str, tables_hash: str = "") -> list[dict]:
     """
     Récupère et alloue les tables. Renvoie une liste de dicts (cache-safe).
-    _data_source: 'supabase', 'qweekle', ou 'demo'
-    _tables_hash: hash de la config tables pour invalider le cache si modifiée
+    data_source: 'supabase', 'qweekle', ou 'demo'
+    tables_hash: hash de la config tables pour invalider le cache si modifiée
     """
-    if _data_source == "supabase":
+    if data_source == "supabase":
         reservations = supabase_client.get_reservations_for_date(date_start, birthday_only=True)
-    elif _data_source == "qweekle":
+    elif data_source == "qweekle":
         reservations = QweekleClient().get_reservations(date_start, date_start)
     else:
         from modules.demo_data import generate_demo_reservations
