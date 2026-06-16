@@ -889,19 +889,10 @@ def main():
 
     st.sidebar.markdown("---")
     
-    # Options de source de données
-    sources = []
+    # Déterminer la source de données (priorité : Supabase > Qweekle > Démo)
     if supabase_client.is_configured():
-        sources.append("Supabase (Rapide)")
-    if QweekleClient().is_configured():
-        sources.append("Qweekle (Temps réel)")
-    sources.append("Démo")
-    
-    selected_source = st.sidebar.radio("Source des données", sources, index=0)
-    
-    if "Supabase" in selected_source:
         data_source = "supabase"
-    elif "Qweekle" in selected_source:
+    elif QweekleClient().is_configured():
         data_source = "qweekle"
     else:
         data_source = "demo"
