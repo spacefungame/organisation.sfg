@@ -887,10 +887,21 @@ def main():
     _inject_css()
     selected_date = _render_sidebar()
 
-    # Déterminer la source de données (priorité : Supabase > Qweekle > Démo)
+    st.sidebar.markdown("---")
+    
+    # Options de source de données
+    sources = []
     if supabase_client.is_configured():
+        sources.append("Supabase (Rapide)")
+    if QweekleClient().is_configured():
+        sources.append("Qweekle (Temps réel)")
+    sources.append("Démo")
+    
+    selected_source = st.sidebar.radio("Source des données", sources, index=0)
+    
+    if "Supabase" in selected_source:
         data_source = "supabase"
-    elif QweekleClient().is_configured():
+    elif "Qweekle" in selected_source:
         data_source = "qweekle"
     else:
         data_source = "demo"
