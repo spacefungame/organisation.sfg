@@ -161,7 +161,7 @@ def _fetch_reservations(date_start: datetime.date, _data_source: str, _tables_ha
     _tables_hash: hash de la config tables pour invalider le cache si modifiée
     """
     if _data_source == "supabase":
-        reservations = supabase_client.get_reservations_for_date(date_start, birthday_only=False)
+        reservations = supabase_client.get_reservations_for_date(date_start, birthday_only=True)
     elif _data_source == "qweekle":
         reservations = QweekleClient().get_reservations(date_start, date_start)
     else:
