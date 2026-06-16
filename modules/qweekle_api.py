@@ -64,10 +64,12 @@ class QweekleClient:
         """Cherche la clé API dans plusieurs emplacements des secrets."""
         # Tenter plusieurs formats TOML possibles
         for reader in [
-            lambda: st.secrets["QWEEKLE_API_KEY"],           # Niveau racine
-            lambda: st.secrets["qweekle"]["api_key"],        # [qweekle] section
-            lambda: st.secrets["qweekle"]["QWEEKLE_API_KEY"],# [qweekle] section alt
-            lambda: st.secrets["supabase"]["QWEEKLE_API_KEY"],# sous [supabase] par erreur
+            lambda: st.secrets["QWEEKLE_API_KEY"],
+            lambda: st.secrets["qweekle_api_key"],
+            lambda: st.secrets["qweekle"]["api_key"],
+            lambda: st.secrets["qweekle"]["QWEEKLE_API_KEY"],
+            lambda: st.secrets["supabase"]["QWEEKLE_API_KEY"],
+            lambda: st.secrets["supabase"]["qweekle_api_key"],
         ]:
             try:
                 val = reader()
@@ -84,8 +86,12 @@ class QweekleClient:
     # ──────────────────────────────────────────────────────────
 
     def is_configured(self) -> bool:
-        """Vérifie si la clé API est renseignée."""
-        return bool(self.api_key and self.api_key.strip())
+        """Vérifie si la clé API est renseignée et valide."""
+        if not self.api_key or not self.api_key.strip():
+            return False
+        if self.api_key == "dummy_key_qweekle":
+            return False
+        return True
 
     # ──────────────────────────────────────────────────────────
     #  Requête HTTP générique
