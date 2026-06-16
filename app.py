@@ -168,17 +168,22 @@ def _fetch_reservations(date_start: datetime.date, data_source: str, tables_hash
         from modules.demo_data import generate_demo_reservations
         reservations = generate_demo_reservations(date_start)
 
-    tables = _get_tables()
-    allocator = TableAllocator(tables=tables)
-    reservations = allocator.allocate(reservations)
-
-    # ── Enrichissement Qweekle : compléter les noms clients manquants ──
+    # ── Enrichissement Qweekle : compléter    # On enrichit avec l'API Qweekle (si dispo)
     try:
         qweekle = QweekleClient()
         if qweekle.is_configured():
             reservations = qweekle.enrich_reservations(reservations)
-    except Exception:
-        pass  # Ne jamais bloquer le dashboard pour un échec d'enrichissement
+    except Exception as e:
+        import logging
+        logging.error("Erreur enrich_reservations: %s", e)
+
+    # Filtrer uniquement les anniversaires APRÈS enrichissement
+    # car l'enrichissement trouve les mots-clés "anniversaire" dans Qweekle !
+    reservations = [r for r in reservations if r.is_birthday]
+
+    tables = _get_tables()
+    allocator = TableAllocator(tables=tables)
+    reservations = allocator.allocate(reservations)
 
     result = []
     for r in reservations:

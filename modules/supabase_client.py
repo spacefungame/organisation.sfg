@@ -234,6 +234,7 @@ def activities_to_reservations(
             child_age="",       # Pas dans les données Qweekle
             break_time=break_time_str,
             comment=f"Status: {status}" if status else "",
+            is_birthday=any(_is_birthday_category(a.get("category", "")) for a in acts),
         )
         reservations.append(reservation)
 

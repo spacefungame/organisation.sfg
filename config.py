@@ -354,6 +354,9 @@ class Reservation:
     # Catégorie d'âge (détectée depuis le label du pack Qweekle)
     age_category: str = ""                    # "enfant", "ado", "adulte" ou ""
 
+    # Flag booléen pour savoir si c'est un anniversaire
+    is_birthday: bool = False
+
     # Alertes Gmail (ajoutées par l'application)
     gmail_alerts: list = field(default_factory=list)
 

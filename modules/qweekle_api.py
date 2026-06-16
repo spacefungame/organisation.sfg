@@ -252,11 +252,39 @@ class QweekleClient:
                     if old_name != full_name:
                         logger.info("Nom : '%s' → '%s'", old_name, full_name)
 
-                # ── Étape 4 : nb_persons + catégorie d'âge ────────
+                # ── Étape 4 : nb_persons + catégorie d'âge + is_birthday ──
                 items = order.get("items", [])
+                
+                # Variables pour reconstruire les horaires
+                valid_starts = []
+                valid_ends = []
+                
+                # Variables pour reconstruire les activités réelles
+                q_activities = []
+                laser_count = 0
+                has_team = False
+                quiz_minutes = 0
+
                 for item in items:
                     item_type = (item.get("type") or "").upper()
                     parent_id = item.get("parent_id")
+                    item_label = (item.get("label") or "").lower()
+                    
+                    # Récupérer les horaires
+                    if item.get("start_at"):
+                        valid_starts.append(item["start_at"])
+                    if item.get("end_at"):
+                        valid_ends.append(item["end_at"])
+
+                    # Reconstruire les activités réelles
+                    if "laser" in item_label:
+                        laser_count += 1
+                    elif "team" in item_label:
+                        has_team = True
+                    elif "quiz" in item_label:
+                        dur = item.get("duration") or 30
+                        quiz_minutes += dur
+
                     # Prendre le PACK principal (sans parent)
                     if item_type == "PACK" and not parent_id:
                         pack_label = (item.get("label") or "").lower()
@@ -274,14 +302,35 @@ class QweekleClient:
                                   or "adulte" in pack_label
                                   or "adult" in pack_label):
                                 reservation.age_category = "adulte"
+                                
+                        # Vérifier si c'est un anniversaire
+                        if "anniversaire" in pack_label or "événement" in pack_label or "evenement" in pack_label:
+                            reservation.is_birthday = True
 
-                        # Ne pas break ici : continuer à chercher
-                        # dans les autres PACKs au cas où le premier
-                        # est un brownie et pas l'activité
-                        if any(kw in pack_label for kw in [
-                            "laser", "team", "quiz", "anniversaire",
-                        ]):
-                            break
+                # Mettre à jour les horaires
+                if valid_starts and valid_ends:
+                    from dateutil import parser
+                    try:
+                        earliest = min(parser.parse(s) for s in valid_starts)
+                        latest = max(parser.parse(s) for s in valid_ends)
+                        # Conversion locale basique ou fallback
+                        reservation.start_time = earliest.time()
+                        reservation.end_time = latest.time()
+                    except Exception as e:
+                        logger.error("Erreur parsing horaires Qweekle: %s", e)
+                        
+                # Mettre à jour les activités si on a trouvé quelque chose (et si Supabase n'avait mis que "Anniversaire")
+                # Ou si Supabase a raté des parties.
+                parts = []
+                if has_team:
+                    parts.append("1H")
+                if laser_count > 0:
+                    parts.append(f"{laser_count} partie{'s' if laser_count > 1 else ''}")
+                if quiz_minutes > 0:
+                    parts.append(f"{quiz_minutes} min Quiz")
+                
+                if parts:
+                    reservation.activities = " + ".join(parts)
 
                 # ── Étape 5 : prénom et âge de l'enfant ───────────
                 if client_id and not reservation.child_name:
