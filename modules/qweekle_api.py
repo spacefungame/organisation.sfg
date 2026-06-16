@@ -285,27 +285,26 @@ class QweekleClient:
                         dur = item.get("duration") or 30
                         quiz_minutes += dur
 
-                    # Prendre le PACK principal (sans parent)
+                    # Check for birthday keywords in ANY item
+                    if "anniversaire" in item_label or "événement" in item_label or "evenement" in item_label:
+                        reservation.is_birthday = True
+
+                    # Détecter la catégorie d'âge depuis n'importe quel label
+                    if not reservation.age_category:
+                        if re.search(r"7\s*[-–]\s*12", item_label):
+                            reservation.age_category = "enfant"
+                        elif re.search(r"13\s*[-–]\s*18", item_label):
+                            reservation.age_category = "ado"
+                        elif ("+18" in item_label
+                              or "adulte" in item_label
+                              or "adult" in item_label):
+                            reservation.age_category = "adulte"
+
+                    # Prendre le PACK principal (sans parent) pour le nb_persons
                     if item_type == "PACK" and not parent_id:
-                        pack_label = (item.get("label") or "").lower()
                         qty = item.get("qty") or 0
                         if qty and qty > 0:
                             reservation.nb_persons = int(qty)
-
-                        # Détecter la catégorie d'âge depuis le label
-                        if not reservation.age_category:
-                            if re.search(r"7\s*[-–]\s*12", pack_label):
-                                reservation.age_category = "enfant"
-                            elif re.search(r"13\s*[-–]\s*18", pack_label):
-                                reservation.age_category = "ado"
-                            elif ("+18" in pack_label
-                                  or "adulte" in pack_label
-                                  or "adult" in pack_label):
-                                reservation.age_category = "adulte"
-                                
-                        # Vérifier si c'est un anniversaire
-                        if "anniversaire" in pack_label or "événement" in pack_label or "evenement" in pack_label:
-                            reservation.is_birthday = True
 
                 # Mettre à jour les horaires
                 if valid_starts and valid_ends:
