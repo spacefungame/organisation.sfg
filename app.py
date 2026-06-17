@@ -503,6 +503,40 @@ def _render_header(date: datetime.date, demo: bool):
                 except Exception as e:
                     st.error(str(e))
 
+        if st.button("🔬 Diagnostic webhook", use_container_width=True):
+            try:
+                creds = supabase_client._get_credentials()
+                if creds:
+                    url, key = creds
+                    hdrs = {"apikey": key, "Authorization": f"Bearer {key}"}
+                    # Chercher dans webhook_logs si Casan/Karwacka apparaissent
+                    r = requests.get(
+                        f"{url}/rest/v1/webhook_logs",
+                        headers=hdrs,
+                        params={"select": "id,event_type,created_at,payload", "order": "created_at.desc", "limit": "500"},
+                        timeout=15,
+                    )
+                    if r.status_code == 200:
+                        logs = r.json()
+                        st.write(f"**{len(logs)} webhook_logs récents**")
+                        casan_logs = [l for l in logs if "Casan" in str(l.get("payload","")) or "casan" in str(l.get("payload","")).lower()]
+                        karwacka_logs = [l for l in logs if "Karwacka" in str(l.get("payload","")) or "karwacka" in str(l.get("payload","")).lower()]
+                        st.write(f"🔍 Casan dans logs: **{len(casan_logs)}** entrées")
+                        st.write(f"🔍 Karwacka dans logs: **{len(karwacka_logs)}** entrées")
+                        
+                        # Compter les event_types uniques
+                        types = {}
+                        for l in logs:
+                            et = l.get("event_type", "?")
+                            types[et] = types.get(et, 0) + 1
+                        st.write("**Event types reçus:**")
+                        for t, c in sorted(types.items(), key=lambda x: -x[1]):
+                            st.text(f"  {t}: {c}")
+                    else:
+                        st.error(f"Erreur {r.status_code}")
+            except Exception as e:
+                st.error(str(e))
+
     if demo:
         st.markdown(
             '<div class="demo-banner fade-in">'
