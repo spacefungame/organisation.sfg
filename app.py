@@ -172,42 +172,11 @@ def _fetch_reservations(date_start: datetime.date, data_source: str, tables_hash
         from modules.demo_data import generate_demo_reservations
         reservations = generate_demo_reservations(date_start)
 
-    # ── Enrichissement Qweekle + découverte auto des manquants ──
+    # ── Enrichissement Qweekle ──
     try:
         qweekle = QweekleClient()
         if qweekle.is_configured():
             reservations = qweekle.enrich_reservations(reservations)
-
-            # ── Découverte automatique des commandes manquantes ──
-            # 1) Collecter TOUS les client_ids depuis Supabase (y compris
-            #    non-anniversaires) pour maximiser la couverture
-            all_client_ids = set()
-            if data_source == "supabase":
-                try:
-                    all_activities = supabase_client.get_booking_activities(date_start)
-                    for act in all_activities:
-                        # Essayer le raw_payload d'abord (contient le vrai client_id Qweekle)
-                        raw = act.get("raw_payload") or {}
-                        cid = raw.get("client_id", "")
-                        if cid:
-                            all_client_ids.add(cid)
-                except Exception:
-                    pass
-
-            existing_ids = {r.id for r in reservations}
-            missing_oids = qweekle.discover_missing_orders(
-                date_start, existing_ids, all_client_ids or None
-            )
-            for oid in missing_oids:
-                if oid not in existing_ids:
-                    try:
-                        r = qweekle.order_to_reservation(oid)
-                        if r and r.date == date_start:
-                            reservations.append(r)
-                            existing_ids.add(oid)
-                    except Exception as e:
-                        import logging
-                        logging.error("Erreur récup order manquant %s: %s", oid, e)
     except Exception as e:
         import logging
         logging.error("Erreur enrich_reservations: %s", e)
