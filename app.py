@@ -158,11 +158,12 @@ def _save_tables_to_supabase(tables: dict) -> bool:
 # ══════════════════════════════════════════════════════════════
 
 @st.cache_data(ttl=300, show_spinner=False)
-def _fetch_reservations(date_start: datetime.date, data_source: str, tables_hash: str = "") -> list[dict]:
+def _fetch_reservations(date_start: datetime.date, data_source: str, tables_hash: str = "", missing_ids_csv: str = "") -> list[dict]:
     """
     Récupère et alloue les tables. Renvoie une liste de dicts (cache-safe).
     data_source: 'supabase', 'qweekle', ou 'demo'
     tables_hash: hash de la config tables pour invalider le cache si modifiée
+    missing_ids_csv: comma-separated order IDs to fetch directly from Qweekle
     """
     if data_source == "supabase":
         reservations = supabase_client.get_reservations_for_date(date_start, birthday_only=False)
@@ -177,6 +178,22 @@ def _fetch_reservations(date_start: datetime.date, data_source: str, tables_hash
         qweekle = QweekleClient()
         if qweekle.is_configured():
             reservations = qweekle.enrich_reservations(reservations)
+
+            # ── Récupérer les commandes manquantes (absentes de Supabase) ──
+            # Ces order_ids sont ajoutés manuellement via la sidebar
+            if missing_ids_csv:
+                missing_ids = [x.strip() for x in missing_ids_csv.split(",") if x.strip()]
+                existing_ids = {r.id for r in reservations}
+                for oid in missing_ids:
+                    if oid not in existing_ids:
+                        try:
+                            r = qweekle.order_to_reservation(oid)
+                            if r and r.date == date_start:
+                                reservations.append(r)
+                                existing_ids.add(oid)
+                    except Exception as e:
+                        import logging
+                        logging.error("Erreur récup order manquant %s: %s", oid, e)
     except Exception as e:
         import logging
         logging.error("Erreur enrich_reservations: %s", e)
@@ -442,30 +459,23 @@ def _render_header(date: datetime.date, demo: bool):
             st.rerun()
 
         st.markdown("---")
-        if st.button("🔍 Diagnostic réservations"):
-            try:
-                activities = supabase_client.get_booking_activities(date)
-                from collections import defaultdict
-                groups = defaultdict(list)
-                for act in activities:
-                    oid = act.get("order_id", "")
-                    if oid:
-                        groups[oid].append(act)
-                st.write(f"**{len(groups)} commandes trouvées dans Supabase pour le {date}**")
-                for oid, acts in sorted(groups.items()):
-                    fn = ""
-                    ln = ""
-                    for a in acts:
-                        fn = (a.get("client_firstname") or "").strip()
-                        ln = (a.get("client_lastname") or "").strip()
-                        if fn or ln:
-                            break
-                    cats = list(set(a.get("category", "") for a in acts))
-                    is_bday = any(supabase_client._is_birthday_category(c) for c in cats)
-                    marker = "🎂" if is_bday else "  "
-                    st.text(f"{marker} {ln} {fn} | {oid[:20]}... | {cats}")
-            except Exception as e:
-                st.error(str(e))
+        with st.expander("📥 Ajouter des réservations manquantes"):
+            st.caption(
+                "Si des réservations n'apparaissent pas (webhook raté), "
+                "collez leurs IDs Qweekle (format OXXXa1...), un par ligne."
+            )
+            current = st.session_state.get("missing_order_ids", [])
+            ids_text = st.text_area(
+                "Order IDs manquants",
+                value="\n".join(current),
+                height=100,
+                placeholder="OXXXa1...\nOXXXa2...",
+            )
+            if st.button("💾 Enregistrer et recharger"):
+                new_ids = [line.strip() for line in ids_text.split("\n") if line.strip()]
+                st.session_state["missing_order_ids"] = new_ids
+                st.cache_data.clear()
+                st.rerun()
 
     if demo:
         st.markdown(
@@ -937,7 +947,9 @@ def main():
 
     try:
         tables_hash = str(sorted(_get_tables().items()))
-        raw = _fetch_reservations(selected_date, data_source, tables_hash)
+        missing_ids = st.session_state.get("missing_order_ids", [])
+        missing_csv = ",".join(missing_ids)
+        raw = _fetch_reservations(selected_date, data_source, tables_hash, missing_csv)
         reservations = [_to_reservation(d) for d in raw]
     except Exception as e:
         logging.exception("Erreur lors de l'exécution de l'application")

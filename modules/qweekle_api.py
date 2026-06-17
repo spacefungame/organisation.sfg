@@ -461,6 +461,167 @@ class QweekleClient:
         return reservations
 
     # ──────────────────────────────────────────────────────────
+    #  Créer une Reservation à partir d'un order_id Qweekle
+    # ──────────────────────────────────────────────────────────
+
+    def order_to_reservation(self, order_id: str) -> "Reservation | None":
+        """
+        Récupère un order par ID Qweekle et le convertit en Reservation.
+        
+        Utile pour les commandes absentes de Supabase (webhook raté).
+        Retourne None si l'order n'existe pas ou en cas d'erreur.
+        """
+        order = self.get_order_details(order_id)
+        if not order:
+            return None
+
+        items = order.get("items", [])
+        if not items:
+            return None
+
+        # ── Client ──
+        client_id = order.get("client_id")
+        client_name = "Inconnu"
+        if client_id:
+            client = self.get_client(client_id)
+            if client:
+                fn = (client.get("firstname") or "").strip()
+                ln = (client.get("lastname") or "").strip()
+                client_name = f"{fn} {ln}".strip() or "Inconnu"
+
+        # ── Horaires, activités, birthday ──
+        from dateutil import parser as dtparser
+        valid_starts = []
+        valid_ends = []
+        laser_count = 0
+        has_team = False
+        quiz_minutes = 0
+        is_birthday = False
+        age_category = ""
+        nb_persons = 0
+        break_time_str = ""
+
+        for item in items:
+            label = (item.get("label") or "").lower()
+            
+            if item.get("start_at"):
+                valid_starts.append(item["start_at"])
+            if item.get("end_at"):
+                valid_ends.append(item["end_at"])
+
+            if "laser" in label:
+                laser_count += 1
+            elif "team" in label:
+                has_team = True
+            elif "quiz" in label:
+                quiz_minutes += item.get("duration") or 30
+
+            if "anniversaire" in label or "événement" in label or "evenement" in label:
+                is_birthday = True
+
+            if not age_category:
+                if re.search(r"7\s*[-–]\s*12", label):
+                    age_category = "enfant"
+                elif re.search(r"13\s*[-–]\s*18", label):
+                    age_category = "ado"
+                elif "+18" in label or "adulte" in label:
+                    age_category = "adulte"
+
+            # Table réservée = pause gâteau
+            if "table" in label and "réserv" in label and item.get("start_at"):
+                try:
+                    t = dtparser.parse(item["start_at"])
+                    break_time_str = f"{t.hour}h{t.minute:02d}"
+                except Exception:
+                    pass
+
+            itype = (item.get("type") or "").upper()
+            if itype == "PACK" and not item.get("parent_id"):
+                qty = item.get("qty") or 0
+                if qty > 0:
+                    nb_persons = int(qty)
+
+        if not valid_starts or not valid_ends:
+            return None
+
+        try:
+            earliest = min(dtparser.parse(s) for s in valid_starts)
+            latest = max(dtparser.parse(s) for s in valid_ends)
+        except Exception:
+            return None
+
+        # ── Activités texte ──
+        parts = []
+        if has_team:
+            parts.append("1H")
+        if laser_count > 0:
+            parts.append(f"{laser_count} partie{'s' if laser_count > 1 else ''}")
+        if quiz_minutes > 0:
+            parts.append(f"{quiz_minutes} min Quiz")
+        activities_str = " + ".join(parts) if parts else "Anniversaire"
+
+        reservation = Reservation(
+            id=order_id,
+            reservation_number=order.get("number", order_id[:12]),
+            client_name=client_name,
+            date=earliest.date(),
+            start_time=earliest.time(),
+            end_time=latest.time(),
+            activities=activities_str,
+            nb_persons=nb_persons,
+            is_birthday=is_birthday,
+            age_category=age_category,
+            break_time=break_time_str,
+        )
+
+        # ── Options (brownie, gâteau, etc.) ──
+        for item in items:
+            itype = (item.get("type") or "").upper()
+            if itype in ("DEPOSIT", "G_DEPOSIT", "PAID_DEPOSIT", "VOUCHER"):
+                continue
+            label = (item.get("label") or "").lower()
+            if not label:
+                continue
+            qty = item.get("qty") or 0
+            if qty <= 0:
+                continue
+
+            for keywords, excludes, matched_field in _OPTIONS_RULES:
+                if any(kw in label for kw in keywords):
+                    if excludes and any(ex in label for ex in excludes):
+                        continue
+                    effective_qty = int(qty)
+                    if matched_field == "gateau_crepes":
+                        m = re.search(r"(\d+)\s*cr[êe]pe", item.get("label", ""), re.I)
+                        if m:
+                            effective_qty = int(m.group(1))
+                    setattr(reservation, matched_field, effective_qty)
+                    break
+
+        # ── Enfant ──
+        if client_id:
+            subs = self.get_client_subs(client_id)
+            if subs:
+                best_sub = subs[0]
+                child_fn = (best_sub.get("firstname") or "").strip()
+                if child_fn:
+                    reservation.child_name = child_fn
+                bday_str = best_sub.get("birthday_at", "")
+                if bday_str:
+                    try:
+                        bd = datetime.date.fromisoformat(bday_str[:10])
+                        age = (
+                            reservation.date.year - bd.year
+                            - ((reservation.date.month, reservation.date.day) < (bd.month, bd.day))
+                        )
+                        reservation.child_age = str(age)
+                    except (ValueError, TypeError):
+                        pass
+
+        logger.info("Reservation créée depuis Qweekle order %s : %s", order_id, client_name)
+        return reservation
+
+    # ──────────────────────────────────────────────────────────
     #  Récupération directe des réservations (mode Qweekle pur)
     # ──────────────────────────────────────────────────────────
 
