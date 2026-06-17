@@ -510,7 +510,7 @@ def _render_header(date: datetime.date, demo: bool):
                     url, key = creds
                     hdrs = {"apikey": key, "Authorization": f"Bearer {key}", "Content-Type": "application/json"}
                     r = requests.get(
-                        f"{url}/rest/v1/webhook_logs?order=created_at.desc&limit=500",
+                        f"{url}/rest/v1/webhook_logs?limit=500",
                         headers=hdrs, timeout=15,
                     )
                     if r.status_code == 200:
