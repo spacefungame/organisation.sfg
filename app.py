@@ -459,9 +459,10 @@ def _render_header(date: datetime.date, demo: bool):
             st.rerun()
 
         st.markdown("---")
-        if st.button("🔍 Trouver l'endpoint Qweekle"):
+        if st.button("🔍 Voir bookings Qweekle"):
             try:
                 from modules.qweekle_api import QweekleClient
+                import json
                 qc = QweekleClient()
                 if not qc.is_configured():
                     st.error("API non configurée.")
@@ -469,48 +470,46 @@ def _render_header(date: datetime.date, demo: bool):
                     import requests as req
                     headers = {"Authorization": f"Bearer {qc.api_key}"}
                     base = qc.base_url
-                    vid = "3de205e0-a995-11ea-b3ea-d537696521c3"
                     d = date.isoformat()
-                    d2 = (date + datetime.timedelta(days=1)).isoformat()
-                    endpoints = [
-                        f"/bookings?page=1&per_page=10",
-                        f"/bookings?page=1&per_page=10&date_start={d}&date_end={d}",
-                        f"/bookings?page=1&per_page=10&filter[start_at]={d}",
-                        f"/bookings?page=1&per_page=10&filter[date_start]={d}&filter[date_end]={d}",
-                        f"/bookings?page=1&per_page=10&filter[date]={d}",
-                        f"/bookings?page=1&per_page=10&start_at={d}",
-                        f"/bookings?page=1&per_page=10&date={d}",
-                        f"/bookings?page=1&per_page=5&filter[venture_id]={vid}",
-                        f"/bookings?page=1&per_page=5&filter[venture_id]={vid}&filter[start_at]={d}",
-                        f"/bookings?page=1&per_page=5&filter[venture_id]={vid}&date_start={d}&date_end={d2}",
-                        f"/orders?page=1&per_page=5&filter[venture_id]={vid}",
-                        f"/orders?page=1&per_page=5&date_start={d}&date_end={d}",
-                        f"/orders?page=1&per_page=5&filter[date_start]={d}&filter[date_end]={d}",
-                        f"/orders?page=1&per_page=5&filter[created_at]={d}",
-                        f"/orders?filter[venture_id]={vid}&page=1&per_page=5&sort=-created_at",
-                    ]
-                    st.write(f"Test ciblé : {len(endpoints)} combinaisons...")
-                    for ep in endpoints:
-                        try:
-                            r = req.get(f"{base}{ep}", headers=headers, timeout=15)
-                            color = "🟢" if r.status_code == 200 else ("🟡" if r.status_code < 404 else "🔴")
-                            line = f"{color} {r.status_code} {ep[:80]}"
-                            if r.status_code == 200:
-                                txt = r.text[:300]
-                                # Count items
-                                try:
-                                    data = r.json()
-                                    items = data.get("data", [])
-                                    meta = data.get("meta", {})
-                                    line += f"\n  📦 {len(items)} items | meta={meta}"
-                                    if items:
-                                        first = items[0]
-                                        line += f"\n  🔑 Keys: {list(first.keys())[:10]}"
-                                except Exception:
-                                    line += f"\n  📦 {txt[:200]}"
-                            st.text(line)
-                        except Exception as e:
-                            st.text(f"⏱️ {ep[:60]}: timeout/error")
+                    # Fetch bookings for this date with pagination
+                    all_bookings = []
+                    page = 1
+                    while True:
+                        url = f"{base}/bookings?date_start={d}&date_end={d}&page={page}&per_page=30"
+                        r = req.get(url, headers=headers, timeout=30)
+                        if r.status_code != 200:
+                            st.error(f"Erreur {r.status_code}")
+                            break
+                        data = r.json().get("data", [])
+                        if not data:
+                            break
+                        all_bookings.extend(data)
+                        if len(data) < 30:
+                            break
+                        page += 1
+                    
+                    st.write(f"**{len(all_bookings)} bookings trouvés pour {d}**")
+                    
+                    # Extract unique order IDs
+                    order_ids = set()
+                    for b in all_bookings:
+                        oi = b.get("order_item") or {}
+                        if isinstance(oi, dict):
+                            oid = oi.get("order_id", "")
+                            if oid:
+                                order_ids.add(oid)
+                    
+                    st.write(f"**{len(order_ids)} order_ids uniques**")
+                    
+                    # Show first 3 bookings for structure
+                    for i, b in enumerate(all_bookings[:3]):
+                        st.json(b)
+                    
+                    # Show all order_ids with client info
+                    st.write("---")
+                    st.write("**Order IDs trouvés :**")
+                    for oid in sorted(order_ids):
+                        st.text(f"  {oid}")
             except Exception as e:
                 st.error(str(e))
 
