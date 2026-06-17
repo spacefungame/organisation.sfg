@@ -459,60 +459,63 @@ def _render_header(date: datetime.date, demo: bool):
             st.rerun()
 
         st.markdown("---")
-        if st.button("🔍 Chercher réservations manquantes"):
-            try:
-                from modules.qweekle_api import QweekleClient
-                qc = QweekleClient()
-                if not qc.is_configured():
-                    st.error("API non configurée.")
-                else:
+        with st.expander("🔍 Chercher une réservation manquante"):
+            st.caption("Tapez le nom de famille du client pour chercher sur Qweekle.")
+            search_name = st.text_input("Nom de famille", placeholder="ex: Karwacka")
+            if st.button("Rechercher", use_container_width=True) and search_name.strip():
+                try:
+                    from modules.qweekle_api import QweekleClient
                     import requests as req
-                    headers = {"Authorization": f"Bearer {qc.api_key}"}
-                    base = qc.base_url
-                    
-                    # 1) Récupérer Karwacka par numéro de commande
-                    st.write("**1. Recherche par numéro de commande**")
-                    r = req.get(f"{base}/orders?filter[number]=O-260321-000158", headers=headers, timeout=15)
-                    if r.status_code == 200:
-                        data = r.json().get("data", [])
-                        if data:
-                            order = data[0]
-                            st.success(f"Karwacka trouvée ! ID={order['id'][:30]}... | client_id={order.get('client_id','?')}")
-                    
-                    # 2) Tester recherche de clients
-                    st.write("**2. Test recherche clients**")
-                    client_endpoints = [
-                        f"/clients?search=Karwacka",
-                        f"/clients?filter[lastname]=Karwacka",
-                        f"/clients?lastname=Karwacka",
-                        f"/clients?filter[search]=Karwacka",
-                        f"/clients?q=Karwacka",
-                        f"/clients?page=1&per_page=5&filter[lastname]=Karwacka",
-                        f"/clients?page=1&per_page=5&search=Karwacka",
-                        f"/clients?page=1&per_page=5&q=Casan",
-                    ]
-                    for ep in client_endpoints:
-                        try:
-                            r2 = req.get(f"{base}{ep}", headers=headers, timeout=10)
-                            n = len(r2.json().get("data", [])) if r2.status_code == 200 else "err"
-                            color = "🟢" if r2.status_code == 200 and n != "err" and n > 0 else ("🟡" if r2.status_code == 200 else "🔴")
-                            st.text(f"{color} {r2.status_code} {ep} => {n} results")
-                        except Exception:
-                            st.text(f"⏱️ {ep}: timeout")
-                    
-                    # 3) Tester recherche orders par client_id
-                    st.write("**3. Test orders par client_id**")
-                    # Use a known client_id from Supabase
-                    r3 = req.get(f"{base}/orders?filter[client_id]=52841b00-e583-11f0-b641-6de8fefa5815&page=1&per_page=5", headers=headers, timeout=15)
-                    if r3.status_code == 200:
-                        orders = r3.json().get("data", [])
-                        st.text(f"🟢 filter[client_id] => {len(orders)} orders")
-                        for o in orders[:3]:
-                            st.text(f"  {o.get('number','?')} | {o.get('id','?')[:25]}...")
+                    qc = QweekleClient()
+                    if not qc.is_configured():
+                        st.error("API non configurée.")
                     else:
-                        st.text(f"🔴 {r3.status_code}")
-            except Exception as e:
-                st.error(f"Erreur: {e}")
+                        headers = {"Authorization": f"Bearer {qc.api_key}"}
+                        base = qc.base_url
+                        # 1) Chercher le client
+                        r = req.get(
+                            f"{base}/clients?filter[lastname]={search_name.strip()}",
+                            headers=headers, timeout=15
+                        )
+                        if r.status_code != 200:
+                            st.error(f"Erreur API : {r.status_code}")
+                        else:
+                            clients = r.json().get("data", [])
+                            if not clients:
+                                st.warning(f"Aucun client trouvé pour '{search_name}'")
+                            else:
+                                found_orders = []
+                                for client in clients:
+                                    cid = client.get("id", "")
+                                    cname = f"{client.get('firstname','')} {client.get('lastname','')}".strip()
+                                    # 2) Chercher les commandes de ce client
+                                    r2 = req.get(
+                                        f"{base}/orders?filter[client_id]={cid}",
+                                        headers=headers, timeout=15
+                                    )
+                                    if r2.status_code == 200:
+                                        for order in r2.json().get("data", []):
+                                            found_orders.append({
+                                                "client_name": cname,
+                                                "order_id": order.get("id", ""),
+                                                "number": order.get("number", ""),
+                                            })
+                                if not found_orders:
+                                    st.warning("Client trouvé mais aucune commande.")
+                                else:
+                                    st.success(f"{len(found_orders)} commande(s) trouvée(s) :")
+                                    for fo in found_orders:
+                                        st.text(f"  📦 {fo['client_name']} | {fo['number']}")
+                                    # Ajouter les order_ids au session_state
+                                    current = set(st.session_state.get("missing_order_ids", []))
+                                    for fo in found_orders:
+                                        current.add(fo["order_id"])
+                                    st.session_state["missing_order_ids"] = list(current)
+                                    st.cache_data.clear()
+                                    st.info("✅ Commandes ajoutées ! Rechargement...")
+                                    st.rerun()
+                except Exception as e:
+                    st.error(f"Erreur: {e}")
 
     if demo:
         st.markdown(
