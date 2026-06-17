@@ -158,11 +158,12 @@ def _save_tables_to_supabase(tables: dict) -> bool:
 # ══════════════════════════════════════════════════════════════
 
 @st.cache_data(ttl=300, show_spinner=False)
-def _fetch_reservations(date_start: datetime.date, data_source: str, tables_hash: str = "") -> list[dict]:
+def _fetch_reservations(date_start: datetime.date, data_source: str, tables_hash: str = "", extra_ids: str = "") -> list[dict]:
     """
     Récupère et alloue les tables. Renvoie une liste de dicts (cache-safe).
     data_source: 'supabase', 'qweekle', ou 'demo'
     tables_hash: hash de la config tables pour invalider le cache si modifiée
+    extra_ids: comma-separated order IDs trouvés via recherche sidebar
     """
     if data_source == "supabase":
         reservations = supabase_client.get_reservations_for_date(date_start, birthday_only=False)
@@ -177,6 +178,20 @@ def _fetch_reservations(date_start: datetime.date, data_source: str, tables_hash
         qweekle = QweekleClient()
         if qweekle.is_configured():
             reservations = qweekle.enrich_reservations(reservations)
+
+            # ── Injecter les commandes trouvées via la recherche sidebar ──
+            if extra_ids:
+                missing_ids = [x.strip() for x in extra_ids.split(",") if x.strip()]
+                existing_ids = {r.id for r in reservations}
+                for oid in missing_ids:
+                    if oid not in existing_ids:
+                        try:
+                            r = qweekle.order_to_reservation(oid)
+                            if r and r.date == date_start:
+                                reservations.append(r)
+                                existing_ids.add(oid)
+                        except Exception:
+                            pass
     except Exception as e:
         import logging
         logging.error("Erreur enrich_reservations: %s", e)
@@ -442,7 +457,51 @@ def _render_header(date: datetime.date, demo: bool):
             st.rerun()
 
         st.markdown("---")
-        st.caption("🔄 Sync auto Qweekle activée")
+        with st.expander("🔍 Réservation manquante ?"):
+            search_name = st.text_input("Nom de famille", placeholder="ex: Karwacka")
+            if st.button("Rechercher", use_container_width=True) and search_name.strip():
+                try:
+                    from modules.qweekle_api import QweekleClient
+                    import requests as req
+                    qc = QweekleClient()
+                    if not qc.is_configured():
+                        st.error("API non configurée.")
+                    else:
+                        headers = {"Authorization": f"Bearer {qc.api_key}"}
+                        base = qc.base_url
+                        r = req.get(
+                            f"{base}/clients?filter[lastname]={search_name.strip()}",
+                            headers=headers, timeout=15
+                        )
+                        if r.status_code == 200:
+                            clients = r.json().get("data", [])
+                            if not clients:
+                                st.warning(f"Aucun client '{search_name}' trouvé.")
+                            else:
+                                found = []
+                                for c in clients:
+                                    cid = c.get("id", "")
+                                    name = f"{c.get('firstname','')} {c.get('lastname','')}".strip()
+                                    r2 = req.get(f"{base}/orders?filter[client_id]={cid}", headers=headers, timeout=15)
+                                    if r2.status_code == 200:
+                                        for o in r2.json().get("data", []):
+                                            found.append({"name": name, "oid": o.get("id",""), "num": o.get("number","")})
+                                if found:
+                                    st.success(f"{len(found)} commande(s) trouvée(s)")
+                                    for f in found:
+                                        st.text(f"  📦 {f['name']} | {f['num']}")
+                                    current = set(st.session_state.get("missing_order_ids", []))
+                                    for f in found:
+                                        current.add(f["oid"])
+                                    st.session_state["missing_order_ids"] = list(current)
+                                    st.cache_data.clear()
+                                    st.rerun()
+                                else:
+                                    st.warning("Client trouvé mais aucune commande.")
+                        else:
+                            st.error(f"Erreur {r.status_code}")
+                except Exception as e:
+                    st.error(str(e))
 
     if demo:
         st.markdown(
@@ -914,7 +973,8 @@ def main():
 
     try:
         tables_hash = str(sorted(_get_tables().items()))
-        raw = _fetch_reservations(selected_date, data_source, tables_hash)
+        extra = ",".join(st.session_state.get("missing_order_ids", []))
+        raw = _fetch_reservations(selected_date, data_source, tables_hash, extra)
         reservations = [_to_reservation(d) for d in raw]
     except Exception as e:
         logging.exception("Erreur lors de l'exécution de l'application")
