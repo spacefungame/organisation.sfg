@@ -191,9 +191,9 @@ def _fetch_reservations(date_start: datetime.date, data_source: str, tables_hash
                             if r and r.date == date_start:
                                 reservations.append(r)
                                 existing_ids.add(oid)
-                    except Exception as e:
-                        import logging
-                        logging.error("Erreur récup order manquant %s: %s", oid, e)
+                        except Exception as e:
+                            import logging
+                            logging.error("Erreur récup order manquant %s: %s", oid, e)
     except Exception as e:
         import logging
         logging.error("Erreur enrich_reservations: %s", e)
