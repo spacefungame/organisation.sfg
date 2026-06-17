@@ -220,7 +220,7 @@ def activities_to_reservations(
         # ── Statut ────────────────────────────────────────────
         status = acts[0].get("global_status", "")
         
-        is_birthday = any(_is_birthday_category(c) for c in categories)
+        is_birthday = any(_is_birthday_category(a.get("category", "")) for a in acts)
 
         # ── Construire la Reservation ─────────────────────────
         reservation = Reservation(
