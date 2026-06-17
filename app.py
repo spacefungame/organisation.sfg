@@ -459,23 +459,73 @@ def _render_header(date: datetime.date, demo: bool):
             st.rerun()
 
         st.markdown("---")
-        with st.expander("📥 Ajouter des réservations manquantes"):
-            st.caption(
-                "Si des réservations n'apparaissent pas (webhook raté), "
-                "collez leurs IDs Qweekle (format OXXXa1...), un par ligne."
-            )
-            current = st.session_state.get("missing_order_ids", [])
-            ids_text = st.text_area(
-                "Order IDs manquants",
-                value="\n".join(current),
-                height=100,
-                placeholder="OXXXa1...\nOXXXa2...",
-            )
-            if st.button("💾 Enregistrer et recharger"):
-                new_ids = [line.strip() for line in ids_text.split("\n") if line.strip()]
-                st.session_state["missing_order_ids"] = new_ids
-                st.cache_data.clear()
-                st.rerun()
+        if st.button("🔍 Trouver l'endpoint Qweekle"):
+            try:
+                from modules.qweekle_api import QweekleClient
+                qc = QweekleClient()
+                if not qc.is_configured():
+                    st.error("API non configurée.")
+                else:
+                    import requests as req
+                    headers = {"Authorization": f"Bearer {qc.api_key}"}
+                    base = qc.base_url
+                    # Venture ID from a known order
+                    vid = "3de205e0-a995-11ea-b3ea-d537696521c3"
+                    d = date.isoformat()
+                    d2 = (date + datetime.timedelta(days=1)).isoformat()
+                    endpoints = [
+                        (f"/bookings?date_start={d}&date_end={d}", "GET"),
+                        (f"/bookings?filter[date]={d}", "GET"),
+                        (f"/bookings?page=1&per_page=100", "GET"),
+                        (f"/bookings?venture_id={vid}&date={d}", "GET"),
+                        (f"/ventures/{vid}/bookings", "GET"),
+                        (f"/ventures/{vid}/bookings?date={d}", "GET"),
+                        (f"/ventures/{vid}/orders", "GET"),
+                        (f"/ventures/{vid}/orders?date={d}", "GET"),
+                        (f"/ventures/{vid}/schedule?date={d}", "GET"),
+                        (f"/schedule?date={d}", "GET"),
+                        (f"/schedule?venture_id={vid}&date={d}", "GET"),
+                        (f"/agenda?date={d}", "GET"),
+                        (f"/orders?page=1&per_page=10", "GET"),
+                        (f"/orders?filter[venture_id]={vid}", "GET"),
+                        (f"/search/orders?date={d}", "GET"),
+                        (f"/bookings/search?date={d}", "GET"),
+                        (f"/planning?date={d}", "GET"),
+                        (f"/planning?venture_id={vid}&date={d}", "GET"),
+                        (f"/calendar?date={d}", "GET"),
+                        (f"/calendar?venture_id={vid}&date={d}", "GET"),
+                        (f"/activities?date_start={d}&date_end={d2}", "GET"),
+                        (f"/activities?venture_id={vid}&date_start={d}&date_end={d2}", "GET"),
+                    ]
+                    # Also try POST on some
+                    post_endpoints = [
+                        ("/bookings/search", {"date_start": d, "date_end": d}),
+                        ("/orders/search", {"date_start": d, "date_end": d}),
+                        ("/search", {"type": "booking", "date": d}),
+                    ]
+                    st.write(f"Test de {len(endpoints) + len(post_endpoints)} endpoints...")
+                    for ep, method in endpoints:
+                        try:
+                            r = req.get(f"{base}{ep}", headers=headers, timeout=5)
+                            color = "🟢" if r.status_code == 200 else ("🟡" if r.status_code < 404 else "🔴")
+                            line = f"{color} {r.status_code} GET {ep}"
+                            if r.status_code == 200:
+                                line += f"\n  📦 {r.text[:200]}"
+                            st.text(line)
+                        except Exception as e:
+                            st.text(f"❌ GET {ep}: {e}")
+                    for ep, body in post_endpoints:
+                        try:
+                            r = req.post(f"{base}{ep}", headers={**headers, "Content-Type": "application/json"}, json=body, timeout=5)
+                            color = "🟢" if r.status_code == 200 else ("🟡" if r.status_code < 404 else "🔴")
+                            line = f"{color} {r.status_code} POST {ep}"
+                            if r.status_code == 200:
+                                line += f"\n  📦 {r.text[:200]}"
+                            st.text(line)
+                        except Exception as e:
+                            st.text(f"❌ POST {ep}: {e}")
+            except Exception as e:
+                st.error(str(e))
 
     if demo:
         st.markdown(
