@@ -442,6 +442,7 @@ def _render_header(date: datetime.date, demo: bool):
             st.rerun()
 
         st.markdown("---")
+        test_id = st.text_input("ID Commande (ex: OXXX... ou O-260...) pour test API", "O-260321-000158")
         if st.button("Test API Qweekle"):
             try:
                 from modules.qweekle_api import QweekleClient
@@ -451,8 +452,8 @@ def _render_header(date: datetime.date, demo: bool):
                 else:
                     st.info(f"Test avec clé : {qc.api_key[:5]}...")
                     import requests
-                    order_id = "OXXXa1f4fbbb6b774fd58d027af30d868b38"
-                    url = f"{qc.base_url}/orders/{order_id}"
+                    # Si c'est un numéro court, Qweekle API pourrait renvoyer 404, on verra !
+                    url = f"{qc.base_url}/orders/{test_id.strip()}"
                     r = requests.get(url, headers={"Authorization": f"Bearer {qc.api_key}"})
                     st.write(f"Code HTTP: {r.status_code}")
                     st.write(f"Réponse brute : {r.text[:500]}...")
