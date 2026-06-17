@@ -442,21 +442,28 @@ def _render_header(date: datetime.date, demo: bool):
             st.rerun()
 
         st.markdown("---")
-        test_id = st.text_input("ID Commande (ex: OXXX... ou O-260...) pour test API", "O-260321-000158")
-        if st.button("Test API Qweekle"):
+        if st.button("🔍 Diagnostic réservations"):
             try:
-                from modules.qweekle_api import QweekleClient
-                qc = QweekleClient()
-                if not qc.is_configured():
-                    st.error("API non configurée.")
-                else:
-                    st.info(f"Test avec clé : {qc.api_key[:5]}...")
-                    import requests
-                    # Si c'est un numéro court, Qweekle API pourrait renvoyer 404, on verra !
-                    url = f"{qc.base_url}/orders/{test_id.strip()}"
-                    r = requests.get(url, headers={"Authorization": f"Bearer {qc.api_key}"})
-                    st.write(f"Code HTTP: {r.status_code}")
-                    st.write(f"Réponse brute : {r.text[:500]}...")
+                activities = supabase_client.get_booking_activities(selected_date)
+                from collections import defaultdict
+                groups = defaultdict(list)
+                for act in activities:
+                    oid = act.get("order_id", "")
+                    if oid:
+                        groups[oid].append(act)
+                st.write(f"**{len(groups)} commandes trouvées dans Supabase pour le {selected_date}**")
+                for oid, acts in sorted(groups.items()):
+                    fn = ""
+                    ln = ""
+                    for a in acts:
+                        fn = (a.get("client_firstname") or "").strip()
+                        ln = (a.get("client_lastname") or "").strip()
+                        if fn or ln:
+                            break
+                    cats = list(set(a.get("category", "") for a in acts))
+                    is_bday = any(supabase_client._is_birthday_category(c) for c in cats)
+                    marker = "🎂" if is_bday else "  "
+                    st.text(f"{marker} {ln} {fn} | {oid[:20]}... | {cats}")
             except Exception as e:
                 st.error(str(e))
 
