@@ -441,6 +441,24 @@ def _render_header(date: datetime.date, demo: bool):
             st.cache_data.clear()
             st.rerun()
 
+        st.markdown("---")
+        if st.button("Test API Qweekle"):
+            try:
+                from modules.qweekle_api import QweekleClient
+                qc = QweekleClient()
+                if not qc.is_configured():
+                    st.error("API non configurée.")
+                else:
+                    st.info(f"Test avec clé : {qc.api_key[:5]}...")
+                    import requests
+                    order_id = "OXXXa1f4fbbb6b774fd58d027af30d868b38"
+                    url = f"{qc.base_url}/orders/{order_id}"
+                    r = requests.get(url, headers={"Authorization": f"Bearer {qc.api_key}"})
+                    st.write(f"Code HTTP: {r.status_code}")
+                    st.write(f"Réponse brute : {r.text[:500]}...")
+            except Exception as e:
+                st.error(str(e))
+
     if demo:
         st.markdown(
             '<div class="demo-banner fade-in">'

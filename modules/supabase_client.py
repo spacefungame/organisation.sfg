@@ -219,6 +219,8 @@ def activities_to_reservations(
 
         # ── Statut ────────────────────────────────────────────
         status = acts[0].get("global_status", "")
+        
+        is_birthday = any(_is_birthday_category(c) for c in categories)
 
         # ── Construire la Reservation ─────────────────────────
         reservation = Reservation(
@@ -234,7 +236,7 @@ def activities_to_reservations(
             child_age="",       # Pas dans les données Qweekle
             break_time=break_time_str,
             comment=f"Status: {status}" if status else "",
-            is_birthday=any(_is_birthday_category(a.get("category", "")) for a in acts),
+            is_birthday=is_birthday,
         )
         reservations.append(reservation)
 
