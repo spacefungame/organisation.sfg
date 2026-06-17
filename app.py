@@ -459,7 +459,7 @@ def _render_header(date: datetime.date, demo: bool):
             st.rerun()
 
         st.markdown("---")
-        if st.button("🔍 Test orders Qweekle"):
+        if st.button("🔍 Chercher réservations manquantes"):
             try:
                 from modules.qweekle_api import QweekleClient
                 qc = QweekleClient()
@@ -469,31 +469,48 @@ def _render_header(date: datetime.date, demo: bool):
                     import requests as req
                     headers = {"Authorization": f"Bearer {qc.api_key}"}
                     base = qc.base_url
-                    d = date.isoformat()
                     
-                    # Test 1: Orders with date filter
-                    st.write("**Test 1: /orders avec filtre date**")
-                    r = req.get(f"{base}/orders?date_start={d}&date_end={d}&page=1&per_page=5", headers=headers, timeout=30)
+                    # 1) Récupérer Karwacka par numéro de commande
+                    st.write("**1. Recherche par numéro de commande**")
+                    r = req.get(f"{base}/orders?filter[number]=O-260321-000158", headers=headers, timeout=15)
                     if r.status_code == 200:
-                        items = r.json().get("data", [])
-                        st.write(f"{len(items)} orders. Dates des items:")
-                        for o in items[:3]:
-                            oi = o.get("items", [])
-                            dates = [it.get("start_at", "?")[:10] for it in oi if it.get("start_at")] if oi else ["no items"]
-                            st.text(f"  {o.get('number','?')} | created={o.get('created_at','?')[:10]} | item_dates={dates}")
+                        data = r.json().get("data", [])
+                        if data:
+                            order = data[0]
+                            st.success(f"Karwacka trouvée ! ID={order['id'][:30]}... | client_id={order.get('client_id','?')}")
                     
-                    # Test 2: Search by order number
-                    st.write("**Test 2: recherche par numéro**")
-                    for num in ["O-260321-000158", "O-260606-000070"]:
-                        r2 = req.get(f"{base}/orders?filter[number]={num}&page=1&per_page=5", headers=headers, timeout=15)
-                        st.text(f"  filter[number]={num} => {r2.status_code} | {len(r2.json().get('data',[])) if r2.status_code==200 else 'err'} results")
+                    # 2) Tester recherche de clients
+                    st.write("**2. Test recherche clients**")
+                    client_endpoints = [
+                        f"/clients?search=Karwacka",
+                        f"/clients?filter[lastname]=Karwacka",
+                        f"/clients?lastname=Karwacka",
+                        f"/clients?filter[search]=Karwacka",
+                        f"/clients?q=Karwacka",
+                        f"/clients?page=1&per_page=5&filter[lastname]=Karwacka",
+                        f"/clients?page=1&per_page=5&search=Karwacka",
+                        f"/clients?page=1&per_page=5&q=Casan",
+                    ]
+                    for ep in client_endpoints:
+                        try:
+                            r2 = req.get(f"{base}{ep}", headers=headers, timeout=10)
+                            n = len(r2.json().get("data", [])) if r2.status_code == 200 else "err"
+                            color = "🟢" if r2.status_code == 200 and n != "err" and n > 0 else ("🟡" if r2.status_code == 200 else "🔴")
+                            st.text(f"{color} {r2.status_code} {ep} => {n} results")
+                        except Exception:
+                            st.text(f"⏱️ {ep}: timeout")
                     
-                    # Test 3: Sort newest first
-                    st.write("**Test 3: orders les + récents**")
-                    r3 = req.get(f"{base}/orders?sort=-created_at&page=1&per_page=5", headers=headers, timeout=15)
+                    # 3) Tester recherche orders par client_id
+                    st.write("**3. Test orders par client_id**")
+                    # Use a known client_id from Supabase
+                    r3 = req.get(f"{base}/orders?filter[client_id]=52841b00-e583-11f0-b641-6de8fefa5815&page=1&per_page=5", headers=headers, timeout=15)
                     if r3.status_code == 200:
-                        for o in r3.json().get("data", [])[:5]:
-                            st.text(f"  {o.get('number','?')} | {o.get('created_at','?')[:10]}")
+                        orders = r3.json().get("data", [])
+                        st.text(f"🟢 filter[client_id] => {len(orders)} orders")
+                        for o in orders[:3]:
+                            st.text(f"  {o.get('number','?')} | {o.get('id','?')[:25]}...")
+                    else:
+                        st.text(f"🔴 {r3.status_code}")
             except Exception as e:
                 st.error(f"Erreur: {e}")
 
