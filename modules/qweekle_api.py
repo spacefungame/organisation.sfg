@@ -629,78 +629,35 @@ class QweekleClient:
         self,
         target_date: datetime.date,
         known_order_ids: set[str],
+        known_client_ids: set[str] | None = None,
     ) -> list[str]:
         """
         Découvre les order_ids Qweekle absents de Supabase pour une date donnée.
 
-        Stratégie :
-        1. Récupère les bookings Qweekle page par page (30/page)
-        2. Recherche par binary search la dernière page
-        3. Scanne les ~150 dernières pages (~4500 bookings récents)
-        4. Pour chaque booking dont agenda.start_at tombe sur target_date,
-           extrait le client_id
-        5. Pour chaque client_id inconnu, cherche ses orders
-        6. Retourne les order_ids manquants
+        Stratégie rapide (~20 appels API) :
+        1. Pour chaque client_id connu (déjà enrichi), appelle
+           /orders?filter[client_id]=... pour lister TOUTES ses commandes
+        2. Pour chaque order inconnu, vérifie s'il concerne target_date
+           via order_to_reservation()
+        3. Retourne les order_ids manquants
         """
         if not self.is_configured():
             return []
 
-        headers = {"Authorization": f"Bearer {self.api_key}"}
-        target_str = target_date.isoformat()
-
-        # ── Étape 1 : trouver la dernière page de /bookings ──
-        def _get_page(page: int) -> list:
-            try:
-                r = requests.get(
-                    f"{self.base_url}/bookings?page={page}&per_page=30",
-                    headers=headers, timeout=15,
-                )
-                if r.status_code == 200:
-                    return r.json().get("data", [])
-            except Exception:
-                pass
-            return []
-
-        # Binary search pour la dernière page
-        lo, hi = 1, 10000
-        while lo < hi:
-            mid = (lo + hi + 1) // 2
-            if _get_page(mid):
-                lo = mid
-            else:
-                hi = mid - 1
-        last_page = lo
-        logger.info("Qweekle sync: dernière page = %d", last_page)
-
-        # ── Étape 2 : scanner les dernières pages ──
-        # On scanne ~150 pages = ~4500 bookings (couvre ~3-4 mois)
-        scan_pages = min(150, last_page)
-        start_page = max(1, last_page - scan_pages + 1)
-
-        client_ids_for_date = set()
-        for page in range(start_page, last_page + 1):
-            bookings = _get_page(page)
-            if not bookings:
-                continue
-            for b in bookings:
-                agenda = b.get("agenda") or {}
-                start_at = agenda.get("start_at", "")
-                if start_at and start_at[:10] == target_str:
-                    cid = b.get("client_id")
+        # Collecter les client_ids depuis les orders enrichis
+        if not known_client_ids:
+            known_client_ids = set()
+            for oid in known_order_ids:
+                order = self.get_order_details(oid)
+                if order:
+                    cid = order.get("client_id")
                     if cid:
-                        client_ids_for_date.add(cid)
+                        known_client_ids.add(cid)
 
-        logger.info(
-            "Qweekle sync: %d client_ids trouvés pour %s (pages %d-%d)",
-            len(client_ids_for_date), target_str, start_page, last_page,
-        )
+        headers = {"Authorization": f"Bearer {self.api_key}"}
+        candidate_oids = set()
 
-        if not client_ids_for_date:
-            return []
-
-        # ── Étape 3 : pour chaque client, récupérer ses orders ──
-        missing_ids = []
-        for cid in client_ids_for_date:
+        for cid in known_client_ids:
             try:
                 r = requests.get(
                     f"{self.base_url}/orders?filter[client_id]={cid}",
@@ -710,11 +667,24 @@ class QweekleClient:
                     for order in r.json().get("data", []):
                         oid = order.get("id", "")
                         if oid and oid not in known_order_ids:
-                            missing_ids.append(oid)
+                            candidate_oids.add(oid)
             except Exception as e:
-                logger.error("Erreur récup orders client %s: %s", cid, e)
+                logger.error("Erreur listing orders client %s: %s", cid, e)
 
-        logger.info("Qweekle sync: %d orders manquants trouvés", len(missing_ids))
+        # Vérifier chaque candidat : est-ce qu'il concerne target_date ?
+        missing_ids = []
+        for oid in candidate_oids:
+            try:
+                res = self.order_to_reservation(oid)
+                if res and res.date == target_date:
+                    missing_ids.append(oid)
+            except Exception as e:
+                logger.error("Erreur check order %s: %s", oid, e)
+
+        logger.info(
+            "Qweekle cross-check: %d clients vérifiés, %d orders manquants",
+            len(known_client_ids), len(missing_ids),
+        )
         return missing_ids
 
     # ──────────────────────────────────────────────────────────

@@ -179,10 +179,25 @@ def _fetch_reservations(date_start: datetime.date, data_source: str, tables_hash
             reservations = qweekle.enrich_reservations(reservations)
 
             # ── Découverte automatique des commandes manquantes ──
-            # Scanne les bookings Qweekle récents pour trouver des commandes
-            # absentes de Supabase (webhook raté / créées avant le webhook)
+            # 1) Collecter TOUS les client_ids depuis Supabase (y compris
+            #    non-anniversaires) pour maximiser la couverture
+            all_client_ids = set()
+            if data_source == "supabase":
+                try:
+                    all_activities = supabase_client.get_booking_activities(date_start)
+                    for act in all_activities:
+                        # Essayer le raw_payload d'abord (contient le vrai client_id Qweekle)
+                        raw = act.get("raw_payload") or {}
+                        cid = raw.get("client_id", "")
+                        if cid:
+                            all_client_ids.add(cid)
+                except Exception:
+                    pass
+
             existing_ids = {r.id for r in reservations}
-            missing_oids = qweekle.discover_missing_orders(date_start, existing_ids)
+            missing_oids = qweekle.discover_missing_orders(
+                date_start, existing_ids, all_client_ids or None
+            )
             for oid in missing_oids:
                 if oid not in existing_ids:
                     try:
