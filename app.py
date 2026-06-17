@@ -508,32 +508,31 @@ def _render_header(date: datetime.date, demo: bool):
                 creds = supabase_client._get_credentials()
                 if creds:
                     url, key = creds
-                    hdrs = {"apikey": key, "Authorization": f"Bearer {key}"}
-                    # Chercher dans webhook_logs si Casan/Karwacka apparaissent
+                    hdrs = {"apikey": key, "Authorization": f"Bearer {key}", "Content-Type": "application/json"}
                     r = requests.get(
-                        f"{url}/rest/v1/webhook_logs",
-                        headers=hdrs,
-                        params={"select": "id,event_type,created_at,payload", "order": "created_at.desc", "limit": "500"},
-                        timeout=15,
+                        f"{url}/rest/v1/webhook_logs?order=created_at.desc&limit=500",
+                        headers=hdrs, timeout=15,
                     )
                     if r.status_code == 200:
                         logs = r.json()
                         st.write(f"**{len(logs)} webhook_logs récents**")
-                        casan_logs = [l for l in logs if "Casan" in str(l.get("payload","")) or "casan" in str(l.get("payload","")).lower()]
-                        karwacka_logs = [l for l in logs if "Karwacka" in str(l.get("payload","")) or "karwacka" in str(l.get("payload","")).lower()]
-                        st.write(f"🔍 Casan dans logs: **{len(casan_logs)}** entrées")
-                        st.write(f"🔍 Karwacka dans logs: **{len(karwacka_logs)}** entrées")
-                        
-                        # Compter les event_types uniques
+                        casan_hits = [l for l in logs if "asan" in str(l).lower()]
+                        karwacka_hits = [l for l in logs if "arwacka" in str(l).lower()]
+                        st.write(f"🔍 Casan dans logs: **{len(casan_hits)}**")
+                        st.write(f"🔍 Karwacka dans logs: **{len(karwacka_hits)}**")
+                        for h in casan_hits[:2]:
+                            st.json({"event_type": h.get("event_type"), "created_at": h.get("created_at")})
+                        for h in karwacka_hits[:2]:
+                            st.json({"event_type": h.get("event_type"), "created_at": h.get("created_at")})
                         types = {}
                         for l in logs:
                             et = l.get("event_type", "?")
                             types[et] = types.get(et, 0) + 1
-                        st.write("**Event types reçus:**")
+                        st.write("**Event types:**")
                         for t, c in sorted(types.items(), key=lambda x: -x[1]):
                             st.text(f"  {t}: {c}")
                     else:
-                        st.error(f"Erreur {r.status_code}")
+                        st.error(f"Erreur {r.status_code}: {r.text[:200]}")
             except Exception as e:
                 st.error(str(e))
 
