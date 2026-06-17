@@ -469,61 +469,48 @@ def _render_header(date: datetime.date, demo: bool):
                     import requests as req
                     headers = {"Authorization": f"Bearer {qc.api_key}"}
                     base = qc.base_url
-                    # Venture ID from a known order
                     vid = "3de205e0-a995-11ea-b3ea-d537696521c3"
                     d = date.isoformat()
                     d2 = (date + datetime.timedelta(days=1)).isoformat()
                     endpoints = [
-                        (f"/bookings?date_start={d}&date_end={d}", "GET"),
-                        (f"/bookings?filter[date]={d}", "GET"),
-                        (f"/bookings?page=1&per_page=100", "GET"),
-                        (f"/bookings?venture_id={vid}&date={d}", "GET"),
-                        (f"/ventures/{vid}/bookings", "GET"),
-                        (f"/ventures/{vid}/bookings?date={d}", "GET"),
-                        (f"/ventures/{vid}/orders", "GET"),
-                        (f"/ventures/{vid}/orders?date={d}", "GET"),
-                        (f"/ventures/{vid}/schedule?date={d}", "GET"),
-                        (f"/schedule?date={d}", "GET"),
-                        (f"/schedule?venture_id={vid}&date={d}", "GET"),
-                        (f"/agenda?date={d}", "GET"),
-                        (f"/orders?page=1&per_page=10", "GET"),
-                        (f"/orders?filter[venture_id]={vid}", "GET"),
-                        (f"/search/orders?date={d}", "GET"),
-                        (f"/bookings/search?date={d}", "GET"),
-                        (f"/planning?date={d}", "GET"),
-                        (f"/planning?venture_id={vid}&date={d}", "GET"),
-                        (f"/calendar?date={d}", "GET"),
-                        (f"/calendar?venture_id={vid}&date={d}", "GET"),
-                        (f"/activities?date_start={d}&date_end={d2}", "GET"),
-                        (f"/activities?venture_id={vid}&date_start={d}&date_end={d2}", "GET"),
+                        f"/bookings?page=1&per_page=10",
+                        f"/bookings?page=1&per_page=10&date_start={d}&date_end={d}",
+                        f"/bookings?page=1&per_page=10&filter[start_at]={d}",
+                        f"/bookings?page=1&per_page=10&filter[date_start]={d}&filter[date_end]={d}",
+                        f"/bookings?page=1&per_page=10&filter[date]={d}",
+                        f"/bookings?page=1&per_page=10&start_at={d}",
+                        f"/bookings?page=1&per_page=10&date={d}",
+                        f"/bookings?page=1&per_page=5&filter[venture_id]={vid}",
+                        f"/bookings?page=1&per_page=5&filter[venture_id]={vid}&filter[start_at]={d}",
+                        f"/bookings?page=1&per_page=5&filter[venture_id]={vid}&date_start={d}&date_end={d2}",
+                        f"/orders?page=1&per_page=5&filter[venture_id]={vid}",
+                        f"/orders?page=1&per_page=5&date_start={d}&date_end={d}",
+                        f"/orders?page=1&per_page=5&filter[date_start]={d}&filter[date_end]={d}",
+                        f"/orders?page=1&per_page=5&filter[created_at]={d}",
+                        f"/orders?filter[venture_id]={vid}&page=1&per_page=5&sort=-created_at",
                     ]
-                    # Also try POST on some
-                    post_endpoints = [
-                        ("/bookings/search", {"date_start": d, "date_end": d}),
-                        ("/orders/search", {"date_start": d, "date_end": d}),
-                        ("/search", {"type": "booking", "date": d}),
-                    ]
-                    st.write(f"Test de {len(endpoints) + len(post_endpoints)} endpoints...")
-                    for ep, method in endpoints:
+                    st.write(f"Test ciblé : {len(endpoints)} combinaisons...")
+                    for ep in endpoints:
                         try:
-                            r = req.get(f"{base}{ep}", headers=headers, timeout=5)
+                            r = req.get(f"{base}{ep}", headers=headers, timeout=15)
                             color = "🟢" if r.status_code == 200 else ("🟡" if r.status_code < 404 else "🔴")
-                            line = f"{color} {r.status_code} GET {ep}"
+                            line = f"{color} {r.status_code} {ep[:80]}"
                             if r.status_code == 200:
-                                line += f"\n  📦 {r.text[:200]}"
+                                txt = r.text[:300]
+                                # Count items
+                                try:
+                                    data = r.json()
+                                    items = data.get("data", [])
+                                    meta = data.get("meta", {})
+                                    line += f"\n  📦 {len(items)} items | meta={meta}"
+                                    if items:
+                                        first = items[0]
+                                        line += f"\n  🔑 Keys: {list(first.keys())[:10]}"
+                                except Exception:
+                                    line += f"\n  📦 {txt[:200]}"
                             st.text(line)
                         except Exception as e:
-                            st.text(f"❌ GET {ep}: {e}")
-                    for ep, body in post_endpoints:
-                        try:
-                            r = req.post(f"{base}{ep}", headers={**headers, "Content-Type": "application/json"}, json=body, timeout=5)
-                            color = "🟢" if r.status_code == 200 else ("🟡" if r.status_code < 404 else "🔴")
-                            line = f"{color} {r.status_code} POST {ep}"
-                            if r.status_code == 200:
-                                line += f"\n  📦 {r.text[:200]}"
-                            st.text(line)
-                        except Exception as e:
-                            st.text(f"❌ POST {ep}: {e}")
+                            st.text(f"⏱️ {ep[:60]}: timeout/error")
             except Exception as e:
                 st.error(str(e))
 
