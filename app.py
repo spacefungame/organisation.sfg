@@ -462,7 +462,6 @@ def _render_header(date: datetime.date, demo: bool):
         if st.button("🔍 Voir bookings Qweekle"):
             try:
                 from modules.qweekle_api import QweekleClient
-                import json
                 qc = QweekleClient()
                 if not qc.is_configured():
                     st.error("API non configurée.")
@@ -471,47 +470,20 @@ def _render_header(date: datetime.date, demo: bool):
                     headers = {"Authorization": f"Bearer {qc.api_key}"}
                     base = qc.base_url
                     d = date.isoformat()
-                    # Fetch bookings for this date with pagination
-                    all_bookings = []
-                    page = 1
-                    while True:
-                        url = f"{base}/bookings?date_start={d}&date_end={d}&page={page}&per_page=30"
-                        r = req.get(url, headers=headers, timeout=30)
-                        if r.status_code != 200:
-                            st.error(f"Erreur {r.status_code}")
-                            break
-                        data = r.json().get("data", [])
-                        if not data:
-                            break
-                        all_bookings.extend(data)
-                        if len(data) < 30:
-                            break
-                        page += 1
-                    
-                    st.write(f"**{len(all_bookings)} bookings trouvés pour {d}**")
-                    
-                    # Extract unique order IDs
-                    order_ids = set()
-                    for b in all_bookings:
-                        oi = b.get("order_item") or {}
-                        if isinstance(oi, dict):
-                            oid = oi.get("order_id", "")
-                            if oid:
-                                order_ids.add(oid)
-                    
-                    st.write(f"**{len(order_ids)} order_ids uniques**")
-                    
-                    # Show first 3 bookings for structure
-                    for i, b in enumerate(all_bookings[:3]):
-                        st.json(b)
-                    
-                    # Show all order_ids with client info
-                    st.write("---")
-                    st.write("**Order IDs trouvés :**")
-                    for oid in sorted(order_ids):
-                        st.text(f"  {oid}")
+                    url = f"{base}/bookings?date_start={d}&date_end={d}&page=1&per_page=5"
+                    st.info(f"Appel : {url}")
+                    r = req.get(url, headers=headers, timeout=60)
+                    st.write(f"Status: {r.status_code}")
+                    if r.status_code == 200:
+                        data = r.json()
+                        items = data.get("data", [])
+                        st.write(f"**{len(items)} bookings reçus**")
+                        if items:
+                            st.json(items[0])
+                    else:
+                        st.code(r.text[:500])
             except Exception as e:
-                st.error(str(e))
+                st.error(f"Erreur: {e}")
 
     if demo:
         st.markdown(
