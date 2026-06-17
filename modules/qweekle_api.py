@@ -622,6 +622,102 @@ class QweekleClient:
         return reservation
 
     # ──────────────────────────────────────────────────────────
+    #  Découverte automatique des commandes manquantes
+    # ──────────────────────────────────────────────────────────
+
+    def discover_missing_orders(
+        self,
+        target_date: datetime.date,
+        known_order_ids: set[str],
+    ) -> list[str]:
+        """
+        Découvre les order_ids Qweekle absents de Supabase pour une date donnée.
+
+        Stratégie :
+        1. Récupère les bookings Qweekle page par page (30/page)
+        2. Recherche par binary search la dernière page
+        3. Scanne les ~150 dernières pages (~4500 bookings récents)
+        4. Pour chaque booking dont agenda.start_at tombe sur target_date,
+           extrait le client_id
+        5. Pour chaque client_id inconnu, cherche ses orders
+        6. Retourne les order_ids manquants
+        """
+        if not self.is_configured():
+            return []
+
+        headers = {"Authorization": f"Bearer {self.api_key}"}
+        target_str = target_date.isoformat()
+
+        # ── Étape 1 : trouver la dernière page de /bookings ──
+        def _get_page(page: int) -> list:
+            try:
+                r = requests.get(
+                    f"{self.base_url}/bookings?page={page}&per_page=30",
+                    headers=headers, timeout=15,
+                )
+                if r.status_code == 200:
+                    return r.json().get("data", [])
+            except Exception:
+                pass
+            return []
+
+        # Binary search pour la dernière page
+        lo, hi = 1, 10000
+        while lo < hi:
+            mid = (lo + hi + 1) // 2
+            if _get_page(mid):
+                lo = mid
+            else:
+                hi = mid - 1
+        last_page = lo
+        logger.info("Qweekle sync: dernière page = %d", last_page)
+
+        # ── Étape 2 : scanner les dernières pages ──
+        # On scanne ~150 pages = ~4500 bookings (couvre ~3-4 mois)
+        scan_pages = min(150, last_page)
+        start_page = max(1, last_page - scan_pages + 1)
+
+        client_ids_for_date = set()
+        for page in range(start_page, last_page + 1):
+            bookings = _get_page(page)
+            if not bookings:
+                continue
+            for b in bookings:
+                agenda = b.get("agenda") or {}
+                start_at = agenda.get("start_at", "")
+                if start_at and start_at[:10] == target_str:
+                    cid = b.get("client_id")
+                    if cid:
+                        client_ids_for_date.add(cid)
+
+        logger.info(
+            "Qweekle sync: %d client_ids trouvés pour %s (pages %d-%d)",
+            len(client_ids_for_date), target_str, start_page, last_page,
+        )
+
+        if not client_ids_for_date:
+            return []
+
+        # ── Étape 3 : pour chaque client, récupérer ses orders ──
+        missing_ids = []
+        for cid in client_ids_for_date:
+            try:
+                r = requests.get(
+                    f"{self.base_url}/orders?filter[client_id]={cid}",
+                    headers=headers, timeout=15,
+                )
+                if r.status_code == 200:
+                    for order in r.json().get("data", []):
+                        oid = order.get("id", "")
+                        if oid and oid not in known_order_ids:
+                            missing_ids.append(oid)
+            except Exception as e:
+                logger.error("Erreur récup orders client %s: %s", cid, e)
+
+        logger.info("Qweekle sync: %d orders manquants trouvés", len(missing_ids))
+        return missing_ids
+
+    # ──────────────────────────────────────────────────────────
     #  Récupération directe des réservations (mode Qweekle pur)
     # ──────────────────────────────────────────────────────────
 

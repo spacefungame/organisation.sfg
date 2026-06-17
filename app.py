@@ -158,12 +158,11 @@ def _save_tables_to_supabase(tables: dict) -> bool:
 # ══════════════════════════════════════════════════════════════
 
 @st.cache_data(ttl=300, show_spinner=False)
-def _fetch_reservations(date_start: datetime.date, data_source: str, tables_hash: str = "", missing_ids_csv: str = "") -> list[dict]:
+def _fetch_reservations(date_start: datetime.date, data_source: str, tables_hash: str = "") -> list[dict]:
     """
     Récupère et alloue les tables. Renvoie une liste de dicts (cache-safe).
     data_source: 'supabase', 'qweekle', ou 'demo'
     tables_hash: hash de la config tables pour invalider le cache si modifiée
-    missing_ids_csv: comma-separated order IDs to fetch directly from Qweekle
     """
     if data_source == "supabase":
         reservations = supabase_client.get_reservations_for_date(date_start, birthday_only=False)
@@ -173,27 +172,27 @@ def _fetch_reservations(date_start: datetime.date, data_source: str, tables_hash
         from modules.demo_data import generate_demo_reservations
         reservations = generate_demo_reservations(date_start)
 
-    # ── Enrichissement Qweekle : compléter    # On enrichit avec l'API Qweekle (si dispo)
+    # ── Enrichissement Qweekle + découverte auto des manquants ──
     try:
         qweekle = QweekleClient()
         if qweekle.is_configured():
             reservations = qweekle.enrich_reservations(reservations)
 
-            # ── Récupérer les commandes manquantes (absentes de Supabase) ──
-            # Ces order_ids sont ajoutés manuellement via la sidebar
-            if missing_ids_csv:
-                missing_ids = [x.strip() for x in missing_ids_csv.split(",") if x.strip()]
-                existing_ids = {r.id for r in reservations}
-                for oid in missing_ids:
-                    if oid not in existing_ids:
-                        try:
-                            r = qweekle.order_to_reservation(oid)
-                            if r and r.date == date_start:
-                                reservations.append(r)
-                                existing_ids.add(oid)
-                        except Exception as e:
-                            import logging
-                            logging.error("Erreur récup order manquant %s: %s", oid, e)
+            # ── Découverte automatique des commandes manquantes ──
+            # Scanne les bookings Qweekle récents pour trouver des commandes
+            # absentes de Supabase (webhook raté / créées avant le webhook)
+            existing_ids = {r.id for r in reservations}
+            missing_oids = qweekle.discover_missing_orders(date_start, existing_ids)
+            for oid in missing_oids:
+                if oid not in existing_ids:
+                    try:
+                        r = qweekle.order_to_reservation(oid)
+                        if r and r.date == date_start:
+                            reservations.append(r)
+                            existing_ids.add(oid)
+                    except Exception as e:
+                        import logging
+                        logging.error("Erreur récup order manquant %s: %s", oid, e)
     except Exception as e:
         import logging
         logging.error("Erreur enrich_reservations: %s", e)
@@ -459,63 +458,7 @@ def _render_header(date: datetime.date, demo: bool):
             st.rerun()
 
         st.markdown("---")
-        with st.expander("🔍 Chercher une réservation manquante"):
-            st.caption("Tapez le nom de famille du client pour chercher sur Qweekle.")
-            search_name = st.text_input("Nom de famille", placeholder="ex: Karwacka")
-            if st.button("Rechercher", use_container_width=True) and search_name.strip():
-                try:
-                    from modules.qweekle_api import QweekleClient
-                    import requests as req
-                    qc = QweekleClient()
-                    if not qc.is_configured():
-                        st.error("API non configurée.")
-                    else:
-                        headers = {"Authorization": f"Bearer {qc.api_key}"}
-                        base = qc.base_url
-                        # 1) Chercher le client
-                        r = req.get(
-                            f"{base}/clients?filter[lastname]={search_name.strip()}",
-                            headers=headers, timeout=15
-                        )
-                        if r.status_code != 200:
-                            st.error(f"Erreur API : {r.status_code}")
-                        else:
-                            clients = r.json().get("data", [])
-                            if not clients:
-                                st.warning(f"Aucun client trouvé pour '{search_name}'")
-                            else:
-                                found_orders = []
-                                for client in clients:
-                                    cid = client.get("id", "")
-                                    cname = f"{client.get('firstname','')} {client.get('lastname','')}".strip()
-                                    # 2) Chercher les commandes de ce client
-                                    r2 = req.get(
-                                        f"{base}/orders?filter[client_id]={cid}",
-                                        headers=headers, timeout=15
-                                    )
-                                    if r2.status_code == 200:
-                                        for order in r2.json().get("data", []):
-                                            found_orders.append({
-                                                "client_name": cname,
-                                                "order_id": order.get("id", ""),
-                                                "number": order.get("number", ""),
-                                            })
-                                if not found_orders:
-                                    st.warning("Client trouvé mais aucune commande.")
-                                else:
-                                    st.success(f"{len(found_orders)} commande(s) trouvée(s) :")
-                                    for fo in found_orders:
-                                        st.text(f"  📦 {fo['client_name']} | {fo['number']}")
-                                    # Ajouter les order_ids au session_state
-                                    current = set(st.session_state.get("missing_order_ids", []))
-                                    for fo in found_orders:
-                                        current.add(fo["order_id"])
-                                    st.session_state["missing_order_ids"] = list(current)
-                                    st.cache_data.clear()
-                                    st.info("✅ Commandes ajoutées ! Rechargement...")
-                                    st.rerun()
-                except Exception as e:
-                    st.error(f"Erreur: {e}")
+        st.caption("🔄 Sync auto Qweekle activée")
 
     if demo:
         st.markdown(
@@ -987,9 +930,7 @@ def main():
 
     try:
         tables_hash = str(sorted(_get_tables().items()))
-        missing_ids = st.session_state.get("missing_order_ids", [])
-        missing_csv = ",".join(missing_ids)
-        raw = _fetch_reservations(selected_date, data_source, tables_hash, missing_csv)
+        raw = _fetch_reservations(selected_date, data_source, tables_hash)
         reservations = [_to_reservation(d) for d in raw]
     except Exception as e:
         logging.exception("Erreur lors de l'exécution de l'application")
