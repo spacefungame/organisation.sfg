@@ -444,14 +444,14 @@ def _render_header(date: datetime.date, demo: bool):
         st.markdown("---")
         if st.button("🔍 Diagnostic réservations"):
             try:
-                activities = supabase_client.get_booking_activities(selected_date)
+                activities = supabase_client.get_booking_activities(date)
                 from collections import defaultdict
                 groups = defaultdict(list)
                 for act in activities:
                     oid = act.get("order_id", "")
                     if oid:
                         groups[oid].append(act)
-                st.write(f"**{len(groups)} commandes trouvées dans Supabase pour le {selected_date}**")
+                st.write(f"**{len(groups)} commandes trouvées dans Supabase pour le {date}**")
                 for oid, acts in sorted(groups.items()):
                     fn = ""
                     ln = ""
