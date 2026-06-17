@@ -459,7 +459,7 @@ def _render_header(date: datetime.date, demo: bool):
             st.rerun()
 
         st.markdown("---")
-        if st.button("🔍 Voir bookings Qweekle"):
+        if st.button("🔍 Test orders Qweekle"):
             try:
                 from modules.qweekle_api import QweekleClient
                 qc = QweekleClient()
@@ -470,18 +470,30 @@ def _render_header(date: datetime.date, demo: bool):
                     headers = {"Authorization": f"Bearer {qc.api_key}"}
                     base = qc.base_url
                     d = date.isoformat()
-                    url = f"{base}/bookings?date_start={d}&date_end={d}&page=1&per_page=5"
-                    st.info(f"Appel : {url}")
-                    r = req.get(url, headers=headers, timeout=60)
-                    st.write(f"Status: {r.status_code}")
+                    
+                    # Test 1: Orders with date filter
+                    st.write("**Test 1: /orders avec filtre date**")
+                    r = req.get(f"{base}/orders?date_start={d}&date_end={d}&page=1&per_page=5", headers=headers, timeout=30)
                     if r.status_code == 200:
-                        data = r.json()
-                        items = data.get("data", [])
-                        st.write(f"**{len(items)} bookings reçus**")
-                        if items:
-                            st.json(items[0])
-                    else:
-                        st.code(r.text[:500])
+                        items = r.json().get("data", [])
+                        st.write(f"{len(items)} orders. Dates des items:")
+                        for o in items[:3]:
+                            oi = o.get("items", [])
+                            dates = [it.get("start_at", "?")[:10] for it in oi if it.get("start_at")] if oi else ["no items"]
+                            st.text(f"  {o.get('number','?')} | created={o.get('created_at','?')[:10]} | item_dates={dates}")
+                    
+                    # Test 2: Search by order number
+                    st.write("**Test 2: recherche par numéro**")
+                    for num in ["O-260321-000158", "O-260606-000070"]:
+                        r2 = req.get(f"{base}/orders?filter[number]={num}&page=1&per_page=5", headers=headers, timeout=15)
+                        st.text(f"  filter[number]={num} => {r2.status_code} | {len(r2.json().get('data',[])) if r2.status_code==200 else 'err'} results")
+                    
+                    # Test 3: Sort newest first
+                    st.write("**Test 3: orders les + récents**")
+                    r3 = req.get(f"{base}/orders?sort=-created_at&page=1&per_page=5", headers=headers, timeout=15)
+                    if r3.status_code == 200:
+                        for o in r3.json().get("data", [])[:5]:
+                            st.text(f"  {o.get('number','?')} | {o.get('created_at','?')[:10]}")
             except Exception as e:
                 st.error(f"Erreur: {e}")
 
