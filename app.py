@@ -538,23 +538,26 @@ def _render_header(date: datetime.date, demo: bool):
 
         st.markdown("---")
         if st.button("🔄 Synchro complète Qweekle (2 min)", use_container_width=True, type="primary"):
-            from modules.qweekle_api import QweekleClient
-            qc = QweekleClient()
-            if not qc.is_configured():
-                st.error("API Qweekle non configurée.")
-            else:
-                progress_bar = st.progress(0, text="Démarrage de la synchronisation...")
-                
-                def on_progress(p, text):
-                    progress_bar.progress(p, text=text)
-                    
-                total = qc.run_full_sync(progress_callback=on_progress)
-                if total > 0:
-                    st.success(f"Synchronisation terminée : {total} réservations mises à jour !")
-                    st.cache_data.clear()
-                    st.rerun()
+            try:
+                from modules.qweekle_api import QweekleClient
+                qc = QweekleClient()
+                if not qc.is_configured():
+                    st.error("API Qweekle non configurée.")
                 else:
-                    st.warning("Aucune donnée synchronisée ou erreur (voir logs).")
+                    progress_bar = st.progress(0, text="Démarrage de la synchronisation...")
+                    
+                    def on_progress(p, text):
+                        progress_bar.progress(p, text=text)
+                        
+                    total = qc.run_full_sync(progress_callback=on_progress)
+                    if total > 0:
+                        st.success(f"Synchronisation terminée : {total} réservations mises à jour !")
+                        st.cache_data.clear()
+                        st.rerun()
+                    else:
+                        st.warning("Aucune donnée synchronisée ou erreur (voir logs).")
+            except Exception as e:
+                st.error(f"Détail de l'erreur : {repr(e)}")
     if demo:
         st.markdown(
             '<div class="demo-banner fade-in">'
