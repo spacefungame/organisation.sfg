@@ -49,13 +49,36 @@ def is_configured() -> bool:
     return _get_credentials() is not None
 
 
-def _headers(key: str) -> dict:
-    return {
+def _headers(key: str, merge: bool = False) -> dict:
+    h = {
         "apikey": key,
         "Authorization": f"Bearer {key}",
         "Content-Type": "application/json",
         "Prefer": "return=representation",
     }
+    if merge:
+        h["Prefer"] = "resolution=merge-duplicates"
+    return h
+
+
+def upsert_booking_activities(rows: list[dict]) -> bool:
+    """Insère ou met à jour un lot de booking_activities dans Supabase."""
+    creds = _get_credentials()
+    if not creds or not rows:
+        return False
+    url, key = creds
+    try:
+        r = requests.post(
+            f"{url}/rest/v1/booking_activities",
+            headers=_headers(key, merge=True),
+            json=rows,
+            timeout=15,
+        )
+        r.raise_for_status()
+        return True
+    except Exception as e:
+        logger.error("Erreur upsert Supabase: %s - %s", e, getattr(r, 'text', ''))
+        return False
 
 
 def _utc_to_local(iso_str: str) -> datetime.datetime:

@@ -113,4 +113,77 @@ export default {
       });
     }
   },
+
+  async scheduled(event, env, ctx) {
+    /* ── Synchro horaire automatique ─────────────────── */
+    try {
+      const SUPABASE_URL = "https://uyptbypqzfkdsvpdvwyz.supabase.co";
+      const SUPABASE_KEY = "eyJhbGciOiJIUzI1NiIsInR5cCI6IkpXVCJ9.eyJpc3MiOiJzdXBhYmFzZSIsInJlZiI6InV5cHRieXBxemZrZHN2cGR2d3l6Iiwicm9sZSI6ImFub24iLCJpYXQiOjE3ODAxNTA1ODAsImV4cCI6MjA5NTcyNjU4MH0.ZEZxlWA9H0u6iP3IHn97XjqNABUEl3kqVcsecx9GPKg";
+      const QWEEKLE_API_KEY = "a712eb126838aeb58223d70725227d84";
+      const QWEEKLE_BASE_URL = "https://api.qweekle.io/api";
+      
+      const headers_qweekle = {
+        "Authorization": "Bearer " + QWEEKLE_API_KEY,
+        "Content-Type": "application/json"
+      };
+
+      const headers_supa = {
+        "Content-Type": "application/json",
+        apikey: SUPABASE_KEY,
+        Authorization: "Bearer " + SUPABASE_KEY,
+        Prefer: "resolution=merge-duplicates"
+      };
+
+      // 1. Déterminer le nombre de pages (en récupérant la page 1)
+      const res1 = await fetch(`${QWEEKLE_BASE_URL}/bookings?page=1&per_page=100`, { headers: headers_qweekle });
+      if (!res1.ok) return;
+      const data1 = await res1.json();
+      const totalPages = (data1.meta && data1.meta.pagination && data1.meta.pagination.total_pages) || 1;
+
+      // 2. Fetch les 5 dernières pages (les plus récentes)
+      const pagesToFetch = Math.min(totalPages, 5);
+      const startPage = totalPages - pagesToFetch + 1;
+
+      for (let p = startPage; p <= totalPages; p++) {
+        const resP = await fetch(`${QWEEKLE_BASE_URL}/bookings?page=${p}&per_page=100`, { headers: headers_qweekle });
+        if (resP.ok) {
+          const dataP = await resP.json();
+          const bookings = dataP.data || [];
+          
+          for (const body of bookings) {
+            const row = {
+              qweekle_booking_id: body.id || "",
+              order_id: body.order_id || "",
+              order_item_id: body.order_item_id || "",
+              pack_step: body.pack_step || 0,
+              label: body.label || "",
+              category: body.category || "",
+              subcategory: body.subcategory || "",
+              location: body.location || "",
+              duration: body.duration || 0,
+              qty: body.qty || 0,
+              start_at: body.start_at || null,
+              end_at: body.end_at || null,
+              client_firstname: (body.client && body.client.firstname) || "",
+              client_lastname: (body.client && body.client.lastname) || "",
+              client_email: (body.client && body.client.email) || "",
+              client_phone: (body.client && body.client.phone) || "",
+              source: body.source || "",
+              global_status: body.global_status || "",
+              event_type: "cron_sync",
+              raw_payload: body,
+            };
+
+            await fetch(SUPABASE_URL + "/rest/v1/booking_activities", {
+              method: "POST",
+              headers: headers_supa,
+              body: JSON.stringify(row),
+            });
+          }
+        }
+      }
+    } catch (e) {
+      console.error("Cron failed:", e);
+    }
+  }
 };
