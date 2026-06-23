@@ -1075,3 +1075,32 @@ def main():
 
 if __name__ == "__main__":
     main()
+
+    with st.expander("🛠️ Zone de Débogage (Pour l'assistant)"):
+        st.markdown("Cliquez sur ces boutons et faites une capture d'écran du résultat pour m'aider à comprendre.")
+        if st.button("Voir la base de données (27 Juin)"):
+            try:
+                from modules.supabase_client import supabase
+                if supabase:
+                    res = supabase.table("booking_activities").select("*").gte("start_at", "2026-06-26T00:00:00").lt("start_at", "2026-06-29T00:00:00").execute()
+                    st.write(f"Trouvé {len(res.data)} activités dans Supabase autour du 27 Juin.")
+                    st.json(res.data[:20])
+            except Exception as e:
+                st.error(str(e))
+                
+        if st.button("Voir Qweekle direct (27 Juin)"):
+            try:
+                from modules.qweekle_api import QweekleClient
+                import requests
+                qc = QweekleClient()
+                url = f"{qc.base_url}/bookings?page=1&per_page=100"
+                headers = {"Authorization": f"Bearer {qc.api_key}", "Accept": "application/json"}
+                r = requests.get(url, headers=headers)
+                st.write(f"Status Qweekle: {r.status_code}")
+                if r.status_code == 200:
+                    data = r.json().get("data", [])
+                    june27 = [d for d in data if d.get("start_at", "").startswith("2026-06-27")]
+                    st.write(f"Trouvé {len(june27)} réservations Qweekle pour le 27 Juin dans la dernière page.")
+                    st.json(june27)
+            except Exception as e:
+                st.error(str(e))
