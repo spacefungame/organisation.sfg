@@ -1108,19 +1108,27 @@ if __name__ == "__main__":
                 qc = QweekleClient()
                 headers = {"Authorization": f"Bearer {qc.api_key}", "Accept": "application/json"}
                 
-                st.write("--- Test /orders avec filter[date] ---")
-                r_orders = requests.get(f"{qc.base_url}/orders?filter[date]=2026-06-27&include=items&per_page=10", headers=headers)
+                import datetime
+                today_str = datetime.date.today().isoformat()
+                
+                st.write(f"--- Test /orders pour la date de création : {today_str} ---")
+                r_orders = requests.get(f"{qc.base_url}/orders?filter[date]={today_str}&include=items&per_page=100", headers=headers)
                 json_orders = r_orders.json()
                 data_orders = json_orders.get("data", [])
                 
-                st.write(f"Nombre de commandes (orders) trouvées pour le 27 Juin: {len(data_orders)}")
+                st.write(f"Nombre de commandes (orders) créées/modifiées aujourd'hui : {len(data_orders)}")
+                found_for_27 = []
                 if data_orders:
-                    for o in data_orders[:2]:
-                        st.write(f"**Order ID**: {o.get('id')}")
+                    for o in data_orders:
                         items = o.get("items", [])
-                        st.write(f"  Nombre d'items: {len(items)}")
-                        for i in items[:3]:
-                            st.write(f"  - Item ID: {i.get('id')}, Type: {i.get('type')}, Label: {i.get('label')}, Start: {i.get('start_at')}")
+                        for i in items:
+                            start = i.get('start_at')
+                            if start and "2026-06-27" in start:
+                                found_for_27.append((o.get('id'), i.get('label'), start))
+                
+                st.write(f"Commandes créées aujourd'hui prévues pour le 27 Juin : {len(found_for_27)}")
+                for o_id, label, start in found_for_27:
+                    st.write(f"- Order ID: {o_id}, Label: {label}, Start: {start}")
                 
             except Exception as e:
                 st.error(str(e))
