@@ -744,25 +744,39 @@ class QweekleClient:
                     # Formater comme le webhook
                     rows = []
                     for b in bookings:
+                        # Gérer le format imbriqué de l'API /bookings
+                        order_item = b.get("order_item") or {}
+                        activity = b.get("activity") or {}
+                        agenda = b.get("agenda") or {}
+                        client = b.get("client") or {}
+                        
+                        # Essayer de trouver un label qui pourrait servir de catégorie
+                        cat_label = order_item.get("label", "")
+                        if not cat_label:
+                            cat_label = activity.get("label", "")
+                            
+                        # Mettre par défaut l'order_id sur l'id s'il est manquant
+                        o_id = order_item.get("order_id") or b.get("order_id") or b.get("id", "")
+                        
                         rows.append({
                             "qweekle_booking_id": b.get("id", ""),
-                            "order_id": b.get("order_id", ""),
-                            "order_item_id": b.get("order_item_id", ""),
+                            "order_id": o_id,
+                            "order_item_id": order_item.get("id") or b.get("order_item_id", ""),
                             "pack_step": b.get("pack_step", 0),
-                            "label": b.get("label", ""),
-                            "category": b.get("category", ""),
+                            "label": activity.get("label") or b.get("label", ""),
+                            "category": cat_label or b.get("category", ""),
                             "subcategory": b.get("subcategory", ""),
-                            "location": b.get("location", ""),
-                            "duration": b.get("duration", 0),
+                            "location": agenda.get("location", {}).get("label") if agenda.get("location") else b.get("location", ""),
+                            "duration": activity.get("duration") or b.get("duration", 0),
                             "qty": b.get("qty", 0),
-                            "start_at": b.get("start_at"),
-                            "end_at": b.get("end_at"),
-                            "client_firstname": b.get("client", {}).get("firstname", "") if b.get("client") else "",
-                            "client_lastname": b.get("client", {}).get("lastname", "") if b.get("client") else "",
-                            "client_email": b.get("client", {}).get("email", "") if b.get("client") else "",
-                            "client_phone": b.get("client", {}).get("phone", "") if b.get("client") else "",
+                            "start_at": agenda.get("start_at") or b.get("start_at"),
+                            "end_at": agenda.get("end_at") or b.get("end_at"),
+                            "client_firstname": client.get("firstname", ""),
+                            "client_lastname": client.get("lastname", ""),
+                            "client_email": client.get("email", ""),
+                            "client_phone": client.get("phone", ""),
                             "source": b.get("source", ""),
-                            "global_status": b.get("global_status", ""),
+                            "global_status": b.get("state") or b.get("global_status", ""),
                             "event_type": "manual_sync",
                             "raw_payload": b
                         })

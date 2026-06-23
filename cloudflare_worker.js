@@ -161,27 +161,39 @@ export default {
           const bookings = dataP.data || [];
           
           for (const body of bookings) {
+            // Gérer le format imbriqué de l'API /bookings
+            const order_item = body.order_item || {};
+            const activity = body.activity || {};
+            const agenda = body.agenda || {};
+            const client = body.client || {};
+            
+            // Trouver un label pour la catégorie
+            let cat_label = order_item.label || "";
+            if (!cat_label) cat_label = activity.label || "";
+            
+            const o_id = order_item.order_id || body.order_id || body.id || "";
+            
             const row = {
               qweekle_booking_id: body.id || "",
-              order_id: body.order_id || "",
-              order_item_id: body.order_item_id || "",
+              order_id: o_id,
+              order_item_id: order_item.id || body.order_item_id || "",
               pack_step: body.pack_step || 0,
-              label: body.label || "",
-              category: body.category || "",
+              label: activity.label || body.label || "",
+              category: cat_label || body.category || "",
               subcategory: body.subcategory || "",
-              location: body.location || "",
-              duration: body.duration || 0,
+              location: (agenda.location && agenda.location.label) ? agenda.location.label : (body.location || ""),
+              duration: activity.duration || body.duration || 0,
               qty: body.qty || 0,
-              start_at: body.start_at || null,
-              end_at: body.end_at || null,
-              client_firstname: (body.client && body.client.firstname) || "",
-              client_lastname: (body.client && body.client.lastname) || "",
-              client_email: (body.client && body.client.email) || "",
-              client_phone: (body.client && body.client.phone) || "",
+              start_at: agenda.start_at || body.start_at || null,
+              end_at: agenda.end_at || body.end_at || null,
+              client_firstname: client.firstname || "",
+              client_lastname: client.lastname || "",
+              client_email: client.email || "",
+              client_phone: client.phone || "",
               source: body.source || "",
-              global_status: body.global_status || "",
+              global_status: body.state || body.global_status || "",
               event_type: "cron_sync",
-              raw_payload: body,
+              raw_payload: body
             };
 
             await fetch(SUPABASE_URL + "/rest/v1/booking_activities", {
