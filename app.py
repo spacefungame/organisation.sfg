@@ -1108,27 +1108,22 @@ if __name__ == "__main__":
                 qc = QweekleClient()
                 headers = {"Authorization": f"Bearer {qc.api_key}", "Accept": "application/json"}
                 
-                import datetime
-                today_str = datetime.date.today().isoformat()
+                endpoints_to_test = [
+                    "/agendas?filter[date]=2026-06-27",
+                    "/agendas?filter[start_at]=2026-06-27",
+                    "/events?filter[date]=2026-06-27",
+                    "/sessions?filter[date]=2026-06-27",
+                    "/activities?filter[date]=2026-06-27"
+                ]
                 
-                st.write(f"--- Test /orders pour la date de création : {today_str} ---")
-                r_orders = requests.get(f"{qc.base_url}/orders?filter[date]={today_str}&include=items&per_page=100", headers=headers)
-                json_orders = r_orders.json()
-                data_orders = json_orders.get("data", [])
-                
-                st.write(f"Nombre de commandes (orders) créées/modifiées aujourd'hui : {len(data_orders)}")
-                found_for_27 = []
-                if data_orders:
-                    for o in data_orders:
-                        items = o.get("items", [])
-                        for i in items:
-                            start = i.get('start_at')
-                            if start and "2026-06-27" in start:
-                                found_for_27.append((o.get('id'), i.get('label'), start))
-                
-                st.write(f"Commandes créées aujourd'hui prévues pour le 27 Juin : {len(found_for_27)}")
-                for o_id, label, start in found_for_27:
-                    st.write(f"- Order ID: {o_id}, Label: {label}, Start: {start}")
+                st.write("--- Exploration API Qweekle ---")
+                for ep in endpoints_to_test:
+                    r = requests.get(f"{qc.base_url}{ep}", headers=headers)
+                    if r.status_code == 200:
+                        data = r.json().get("data", [])
+                        st.write(f"✅ {ep} -> OK! {len(data)} items")
+                    else:
+                        st.write(f"❌ {ep} -> Erreur {r.status_code}")
                 
             except Exception as e:
                 st.error(str(e))
