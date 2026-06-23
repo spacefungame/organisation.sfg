@@ -1108,24 +1108,23 @@ if __name__ == "__main__":
                 qc = QweekleClient()
                 headers = {"Authorization": f"Bearer {qc.api_key}", "Accept": "application/json"}
                 
-                # Test 1: Page 1
-                r1 = requests.get(f"{qc.base_url}/bookings?page=1&per_page=1", headers=headers)
-                data1 = r1.json().get("data", [])
-                st.write(f"TEST 1: Réservation sur la page 1 (Date: {data1[0].get('start_at') if data1 else 'N/A'}, Créée: {data1[0].get('created_at') if data1 else 'N/A'})")
-                
-                # Test 2: Dernière Page
+                # Fetch total pages
+                r1 = requests.get(f"{qc.base_url}/bookings?page=1&per_page=100", headers=headers)
                 meta = r1.json().get("meta", {})
                 total_pages = meta.get("pagination", {}).get("total_pages", 1)
-                r_last = requests.get(f"{qc.base_url}/bookings?page={total_pages}&per_page=1", headers=headers)
-                data_last = r_last.json().get("data", [])
-                st.write(f"TEST 2: Réservation sur la page {total_pages} (Date: {data_last[0].get('start_at') if data_last else 'N/A'}, Créée: {data_last[0].get('created_at') if data_last else 'N/A'})")
                 
-                # Test 3: Filtrer par date
-                r_filter = requests.get(f"{qc.base_url}/bookings?filter[start_at]=2026-06-27&per_page=10", headers=headers)
-                data_filter = r_filter.json().get("data", [])
-                st.write(f"TEST 3: Recherche avec filter[start_at] = 2026-06-27. Trouvé: {len(data_filter)}")
-                if data_filter:
-                    st.json(data_filter[:2])
+                # Fetch last page
+                r_last = requests.get(f"{qc.base_url}/bookings?page={total_pages}&per_page=100", headers=headers)
+                data_last = r_last.json().get("data", [])
+                
+                st.write(f"Total Pages: {total_pages}")
+                if data_last:
+                    # Pick the very last item (most recent)
+                    recent = data_last[-1]
+                    st.write("Dernière réservation du système (la plus récente) :")
+                    st.json(recent)
+                else:
+                    st.write("La dernière page est vide.")
                     
             except Exception as e:
                 st.error(str(e))
