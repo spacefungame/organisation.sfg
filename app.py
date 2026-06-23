@@ -539,7 +539,11 @@ def _render_header(date: datetime.date, demo: bool):
         st.markdown("---")
         if st.button("🔄 Synchro complète Qweekle (2 min)", use_container_width=True, type="primary"):
             try:
+                import importlib
+                import modules.qweekle_api
+                importlib.reload(modules.qweekle_api)
                 from modules.qweekle_api import QweekleClient
+                
                 qc = QweekleClient()
                 if not qc.is_configured():
                     st.error("API Qweekle non configurée.")
