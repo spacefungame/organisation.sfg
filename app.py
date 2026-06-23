@@ -1108,28 +1108,34 @@ if __name__ == "__main__":
                 qc = QweekleClient()
                 headers = {"Authorization": f"Bearer {qc.api_key}", "Accept": "application/json"}
                 
-                st.write("--- Exploration API Qweekle /agendas ---")
-                r = requests.get(f"{qc.base_url}/agendas?filter[start_at]=2026-06-27&per_page=100", headers=headers)
+                st.write("--- Exploration API Qweekle /orders Pagination ---")
+                r = requests.get(f"{qc.base_url}/orders?page=1&per_page=100", headers=headers)
                 if r.status_code == 200:
-                    data = r.json().get("data", [])
-                    st.write(f"✅ OK! {len(data)} items")
-                    if data:
-                        first_item = data[0]
-                        st.write("Clés du premier item:", list(first_item.keys()))
+                    data = r.json()
+                    meta = data.get("metadata") or data.get("meta") or {}
+                    total_pages = meta.get("pagination", {}).get("total_pages", 1)
+                    if total_pages == 1:
+                        total_pages = meta.get("last_page", 1)
+                    
+                    st.write(f"Total Pages pour /orders: {total_pages}")
+                    st.write(f"Metadata brute: {meta}")
+                    
+                    orders = data.get("data", [])
+                    st.write(f"Nombre d'orders sur la page 1: {len(orders)}")
+                    if orders:
+                        first = orders[0]
+                        st.write(f"Premier order: ID {first.get('id')}, Créé: {first.get('created_at')}")
                         
-                        # Print some relevant info to see if we have order_id, label, etc.
-                        for d in data[:3]:
-                            st.write(f"- ID: {d.get('id')}")
-                            if 'booking' in d:
-                                b = d['booking']
-                                st.write(f"  Booking ID: {b.get('id')}, Order ID: {b.get('order_id')}, Label: {b.get('label')}")
-                            if 'order_item' in d:
-                                oi = d['order_item']
-                                st.write(f"  Order Item ID: {oi.get('id')}, Label: {oi.get('label')}")
-                            if 'activity' in d:
-                                act = d['activity']
-                                st.write(f"  Activity: {act.get('label')}")
-                            st.write(f"  Start: {d.get('start_at')}")
+                    # Test order last page
+                    if total_pages > 1:
+                        test_page = total_pages
+                        r2 = requests.get(f"{qc.base_url}/orders?page={test_page}&per_page=100", headers=headers)
+                        if r2.status_code == 200:
+                            orders_last = r2.json().get("data", [])
+                            st.write(f"Nombre d'orders sur la DERNIÈRE page ({test_page}): {len(orders_last)}")
+                            if orders_last:
+                                first = orders_last[0]
+                                st.write(f"Order sur la dernière page: ID {first.get('id')}, Créé: {first.get('created_at')}")
                 else:
                     st.write(f"❌ Erreur {r.status_code}")
                 
