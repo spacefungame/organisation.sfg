@@ -26,9 +26,10 @@ logger = logging.getLogger(__name__)
 
 # Catégories Qweekle à afficher dans le planning anniversaires
 BIRTHDAY_CATEGORIES = [
-    "anniversaire",
+    "anniv",
     "événement",
     "evenement",
+    "pack",
 ]
 
 
