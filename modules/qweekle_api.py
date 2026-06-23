@@ -687,6 +687,91 @@ class QweekleClient:
         )
         return missing_ids
 
+    def run_full_sync(self, progress_callback=None) -> int:
+        """
+        Récupère les dernières pages de réservations (où se trouvent les plus récentes)
+        et les insère/met à jour dans Supabase.
+        Renvoie le nombre de réservations insérées.
+        """
+        from modules.supabase_client import upsert_booking_activities
+        
+        try:
+            headers = {
+                "Authorization": f"Bearer {self.api_key}", 
+                "Content-Type": "application/json",
+                "Accept": "application/json"
+            }
+            
+            # Récupérer la dernière page pour voir combien il y en a
+            r_init = requests.get(
+                f"{self.base_url}/bookings?page=1&per_page=100",
+                headers=headers,
+                timeout=_API_TIMEOUT
+            )
+            if r_init.status_code != 200:
+                logger.error("Erreur init full_sync: %s", r_init.status_code)
+                return 0
+                
+            meta = r_init.json().get("meta", {})
+            total_pages = meta.get("pagination", {}).get("total_pages", 1)
+            
+            # On va récupérer les 10 dernières pages (les bookings les plus récents)
+            # Puisque Qweekle trie de manière croissante (les vieux en page 1).
+            pages_to_fetch = min(total_pages, 10)
+            start_page = total_pages - pages_to_fetch + 1
+            
+            total_upserted = 0
+            
+            for i, page in enumerate(range(start_page, total_pages + 1)):
+                if progress_callback:
+                    progress_callback(i / pages_to_fetch, f"Récupération page {page}/{total_pages}...")
+                    
+                r = requests.get(
+                    f"{self.base_url}/bookings?page={page}&per_page=100",
+                    headers=headers,
+                    timeout=_API_TIMEOUT
+                )
+                if r.status_code == 200:
+                    bookings = r.json().get("data", [])
+                    # Formater comme le webhook
+                    rows = []
+                    for b in bookings:
+                        rows.append({
+                            "qweekle_booking_id": b.get("id", ""),
+                            "order_id": b.get("order_id", ""),
+                            "order_item_id": b.get("order_item_id", ""),
+                            "pack_step": b.get("pack_step", 0),
+                            "label": b.get("label", ""),
+                            "category": b.get("category", ""),
+                            "subcategory": b.get("subcategory", ""),
+                            "location": b.get("location", ""),
+                            "duration": b.get("duration", 0),
+                            "qty": b.get("qty", 0),
+                            "start_at": b.get("start_at"),
+                            "end_at": b.get("end_at"),
+                            "client_firstname": b.get("client", {}).get("firstname", "") if b.get("client") else "",
+                            "client_lastname": b.get("client", {}).get("lastname", "") if b.get("client") else "",
+                            "client_email": b.get("client", {}).get("email", "") if b.get("client") else "",
+                            "client_phone": b.get("client", {}).get("phone", "") if b.get("client") else "",
+                            "source": b.get("source", ""),
+                            "global_status": b.get("global_status", ""),
+                            "event_type": "manual_sync",
+                            "raw_payload": b
+                        })
+                    if rows:
+                        success = upsert_booking_activities(rows)
+                        if success:
+                            total_upserted += len(rows)
+                            
+            if progress_callback:
+                progress_callback(1.0, f"Terminé ! {total_upserted} réservations synchronisées.")
+                
+            return total_upserted
+            
+        except Exception as e:
+            logger.error("Erreur run_full_sync: %s", e)
+            return 0
+
     # ──────────────────────────────────────────────────────────
     #  Récupération directe des réservations (mode Qweekle pur)
     # ──────────────────────────────────────────────────────────
