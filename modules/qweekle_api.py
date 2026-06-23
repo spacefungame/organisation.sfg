@@ -722,6 +722,8 @@ class QweekleClient:
                 total_pages = meta["total_pages"]
             elif "last_page" in meta:
                 total_pages = meta["last_page"]
+            elif "lastPage" in meta:
+                total_pages = meta["lastPage"]
             
             # On va récupérer les 100 dernières pages (les bookings les plus récents)
             # pour remonter suffisamment loin dans le temps et rattraper les vieilles réservations.

@@ -148,6 +148,8 @@ export default {
           totalPages = meta.total_pages;
       } else if (meta.last_page) {
           totalPages = meta.last_page;
+      } else if (meta.lastPage) {
+          totalPages = meta.lastPage;
       }
 
       // 2. Fetch les 5 dernières pages (les plus récentes)
