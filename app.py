@@ -1108,10 +1108,45 @@ if __name__ == "__main__":
                 qc = QweekleClient()
                 headers = {"Authorization": f"Bearer {qc.api_key}", "Accept": "application/json"}
                 
-                r1 = requests.get(f"{qc.base_url}/bookings?page=1&per_page=10", headers=headers)
-                data_json = r1.json()
-                st.write("Clés du JSON retourné :", list(data_json.keys()))
-                st.write("Contenu de metadata :", data_json.get("metadata", "Pas de metadata"))
+                # Get total pages
+                r1 = requests.get(f"{qc.base_url}/bookings?page=1&per_page=100", headers=headers)
+                json_data = r1.json()
+                meta = json_data.get("metadata") or json_data.get("meta") or {}
+                total_pages = meta.get("pagination", {}).get("total_pages", 1)
+                if total_pages == 1:
+                    total_pages = meta.get("last_page", 1)
+                
+                st.write(f"Total Pages calculé : {total_pages}")
+                
+                # Check page total_pages - 50
+                test_page = max(1, total_pages - 50)
+                r_test = requests.get(f"{qc.base_url}/bookings?page={test_page}&per_page=100", headers=headers)
+                data_test = r_test.json().get("data", [])
+                
+                if data_test:
+                    st.write(f"Réservations sur la page {test_page} :")
+                    for d in data_test[:5]:
+                        st.write(f"- ID: {d.get('id')}, Créé: {d.get('created_at')}, Start: {d.get('agenda', {}).get('start_at')}")
+                else:
+                    st.write(f"La page {test_page} est vide.")
+                    
+                # Test Supabase UPSERT
+                from modules.supabase_client import get_supabase_client
+                st.write("Test Supabase UPSERT...")
+                # We will just make a dummy request to see if on_conflict throws 400
+                dummy_row = [{"qweekle_booking_id": "test_dummy_id_123", "event_type": "test"}]
+                url = st.secrets["supabase"]["url"]
+                key = st.secrets["supabase"]["key"]
+                h_supa = {
+                    "apikey": key,
+                    "Authorization": f"Bearer {key}",
+                    "Content-Type": "application/json",
+                    "Prefer": "resolution=merge-duplicates"
+                }
+                r_supa = requests.post(f"{url}/rest/v1/booking_activities?on_conflict=qweekle_booking_id", headers=h_supa, json=dummy_row)
+                st.write(f"Supabase UPSERT Status: {r_supa.status_code}")
+                if r_supa.status_code not in (200, 201):
+                    st.write(f"Erreur Supabase: {r_supa.text}")
                     
             except Exception as e:
                 st.error(str(e))
