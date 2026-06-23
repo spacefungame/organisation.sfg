@@ -715,9 +715,9 @@ class QweekleClient:
             meta = r_init.json().get("meta", {})
             total_pages = meta.get("pagination", {}).get("total_pages", 1)
             
-            # On va récupérer les 10 dernières pages (les bookings les plus récents)
-            # Puisque Qweekle trie de manière croissante (les vieux en page 1).
-            pages_to_fetch = min(total_pages, 10)
+            # On va récupérer les 100 dernières pages (les bookings les plus récents)
+            # pour remonter suffisamment loin dans le temps et rattraper les vieilles réservations.
+            pages_to_fetch = min(total_pages, 100)
             start_page = total_pages - pages_to_fetch + 1
             
             total_upserted = 0
