@@ -1108,24 +1108,19 @@ if __name__ == "__main__":
                 qc = QweekleClient()
                 headers = {"Authorization": f"Bearer {qc.api_key}", "Accept": "application/json"}
                 
-                st.write("--- Test /bookings avec filter[date] ---")
-                r_date = requests.get(f"{qc.base_url}/bookings?filter[date]=2026-06-27&per_page=100", headers=headers)
-                json_date = r_date.json()
-                meta_date = json_date.get("metadata") or json_date.get("meta") or {}
-                st.write(f"Metadata filter[date]: {meta_date}")
+                st.write("--- Test /orders avec filter[date] ---")
+                r_orders = requests.get(f"{qc.base_url}/orders?filter[date]=2026-06-27&include=items&per_page=10", headers=headers)
+                json_orders = r_orders.json()
+                data_orders = json_orders.get("data", [])
                 
-                data_date = json_date.get("data", [])
-                st.write(f"Nombre de bookings trouvés pour le 27 Juin: {len(data_date)}")
-                if data_date:
-                    for d in data_date[:5]:
-                        cat = d.get("order_item", {}).get("label") or d.get("activity", {}).get("label")
-                        st.write(f"- ID: {d.get('id')}, Start: {d.get('agenda', {}).get('start_at')}, Label/Cat: {cat}")
-                        
-                st.write("--- Test /bookings avec filter[start_at] ---")
-                r_start = requests.get(f"{qc.base_url}/bookings?filter[start_at]=2026-06-27&per_page=100", headers=headers)
-                json_start = r_start.json()
-                data_start = json_start.get("data", [])
-                st.write(f"Nombre de bookings trouvés (start_at): {len(data_start)}")
+                st.write(f"Nombre de commandes (orders) trouvées pour le 27 Juin: {len(data_orders)}")
+                if data_orders:
+                    for o in data_orders[:2]:
+                        st.write(f"**Order ID**: {o.get('id')}")
+                        items = o.get("items", [])
+                        st.write(f"  Nombre d'items: {len(items)}")
+                        for i in items[:3]:
+                            st.write(f"  - Item ID: {i.get('id')}, Type: {i.get('type')}, Label: {i.get('label')}, Start: {i.get('start_at')}")
                 
             except Exception as e:
                 st.error(str(e))
