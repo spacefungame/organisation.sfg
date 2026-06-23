@@ -1108,23 +1108,11 @@ if __name__ == "__main__":
                 qc = QweekleClient()
                 headers = {"Authorization": f"Bearer {qc.api_key}", "Accept": "application/json"}
                 
-                # Fetch total pages
-                r1 = requests.get(f"{qc.base_url}/bookings?page=1&per_page=100", headers=headers)
-                meta = r1.json().get("meta", {})
-                total_pages = meta.get("pagination", {}).get("total_pages", 1)
-                
-                # Fetch last page
-                r_last = requests.get(f"{qc.base_url}/bookings?page={total_pages}&per_page=100", headers=headers)
-                data_last = r_last.json().get("data", [])
-                
-                st.write(f"Total Pages: {total_pages}")
-                if data_last:
-                    # Pick the very last item (most recent)
-                    recent = data_last[-1]
-                    st.write("Dernière réservation du système (la plus récente) :")
-                    st.json(recent)
-                else:
-                    st.write("La dernière page est vide.")
+                r1 = requests.get(f"{qc.base_url}/bookings?page=1&per_page=10", headers=headers)
+                data_json = r1.json()
+                st.write("Clés du JSON retourné :", list(data_json.keys()))
+                st.write("Contenu de meta :", data_json.get("meta", "Pas de meta"))
+                st.write("Contenu complet :", data_json)
                     
             except Exception as e:
                 st.error(str(e))
