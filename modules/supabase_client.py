@@ -70,7 +70,7 @@ def upsert_booking_activities(rows: list[dict]) -> bool:
     url, key = creds
     try:
         r = requests.post(
-            f"{url}/rest/v1/booking_activities",
+            f"{url}/rest/v1/booking_activities?on_conflict=qweekle_booking_id",
             headers=_headers(key, merge=True),
             json=rows,
             timeout=15,
