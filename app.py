@@ -1111,8 +1111,7 @@ if __name__ == "__main__":
                 r1 = requests.get(f"{qc.base_url}/bookings?page=1&per_page=10", headers=headers)
                 data_json = r1.json()
                 st.write("Clés du JSON retourné :", list(data_json.keys()))
-                st.write("Contenu de meta :", data_json.get("meta", "Pas de meta"))
-                st.write("Contenu complet :", data_json)
+                st.write("Contenu de metadata :", data_json.get("metadata", "Pas de metadata"))
                     
             except Exception as e:
                 st.error(str(e))

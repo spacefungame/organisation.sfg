@@ -139,7 +139,16 @@ export default {
       const res1 = await fetch(`${QWEEKLE_BASE_URL}/bookings?page=1&per_page=100`, { headers: headers_qweekle });
       if (!res1.ok) return;
       const data1 = await res1.json();
-      const totalPages = (data1.meta && data1.meta.pagination && data1.meta.pagination.total_pages) || 1;
+      
+      const meta = data1.metadata || data1.meta || {};
+      let totalPages = 1;
+      if (meta.pagination && meta.pagination.total_pages) {
+          totalPages = meta.pagination.total_pages;
+      } else if (meta.total_pages) {
+          totalPages = meta.total_pages;
+      } else if (meta.last_page) {
+          totalPages = meta.last_page;
+      }
 
       // 2. Fetch les 5 dernières pages (les plus récentes)
       const pagesToFetch = Math.min(totalPages, 5);

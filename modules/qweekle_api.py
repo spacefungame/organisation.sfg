@@ -702,18 +702,26 @@ class QweekleClient:
                 "Accept": "application/json"
             }
             
-            # Récupérer la dernière page pour voir combien il y en a
+            # Déterminer la pagination
             r_init = requests.get(
                 f"{self.base_url}/bookings?page=1&per_page=100",
                 headers=headers,
-                timeout=_API_TIMEOUT
+                timeout=10
             )
-            if r_init.status_code != 200:
-                logger.error("Erreur init full_sync: %s", r_init.status_code)
-                return 0
-                
-            meta = r_init.json().get("meta", {})
-            total_pages = meta.get("pagination", {}).get("total_pages", 1)
+            r_init.raise_for_status()
+            json_data = r_init.json()
+            
+            # Qweekle use 'metadata' or 'meta'
+            meta = json_data.get("metadata") or json_data.get("meta") or {}
+            
+            # Chercher total_pages ou last_page
+            total_pages = 1
+            if "pagination" in meta:
+                total_pages = meta["pagination"].get("total_pages", 1)
+            elif "total_pages" in meta:
+                total_pages = meta["total_pages"]
+            elif "last_page" in meta:
+                total_pages = meta["last_page"]
             
             # On va récupérer les 100 dernières pages (les bookings les plus récents)
             # pour remonter suffisamment loin dans le temps et rattraper les vieilles réservations.
