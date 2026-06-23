@@ -166,7 +166,7 @@ def _fetch_reservations(date_start: datetime.date, data_source: str, tables_hash
     extra_ids: comma-separated order IDs trouvés via recherche sidebar
     """
     if data_source == "supabase":
-        reservations = supabase_client.get_reservations_for_date(date_start, birthday_only=False)
+        reservations = supabase_client.get_reservations_for_date(date_start, birthday_only=True)
     elif data_source == "qweekle":
         reservations = QweekleClient().get_reservations(date_start, date_start)
     else:
