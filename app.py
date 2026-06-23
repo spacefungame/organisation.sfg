@@ -1108,45 +1108,24 @@ if __name__ == "__main__":
                 qc = QweekleClient()
                 headers = {"Authorization": f"Bearer {qc.api_key}", "Accept": "application/json"}
                 
-                # Get total pages
-                r1 = requests.get(f"{qc.base_url}/bookings?page=1&per_page=100", headers=headers)
-                json_data = r1.json()
-                meta = json_data.get("metadata") or json_data.get("meta") or {}
-                total_pages = meta.get("pagination", {}).get("total_pages", 1)
-                if total_pages == 1:
-                    total_pages = meta.get("last_page", 1)
+                st.write("--- Test /bookings avec filter[date] ---")
+                r_date = requests.get(f"{qc.base_url}/bookings?filter[date]=2026-06-27&per_page=100", headers=headers)
+                json_date = r_date.json()
+                meta_date = json_date.get("metadata") or json_date.get("meta") or {}
+                st.write(f"Metadata filter[date]: {meta_date}")
                 
-                st.write(f"Total Pages calculé : {total_pages}")
+                data_date = json_date.get("data", [])
+                st.write(f"Nombre de bookings trouvés pour le 27 Juin: {len(data_date)}")
+                if data_date:
+                    for d in data_date[:5]:
+                        cat = d.get("order_item", {}).get("label") or d.get("activity", {}).get("label")
+                        st.write(f"- ID: {d.get('id')}, Start: {d.get('agenda', {}).get('start_at')}, Label/Cat: {cat}")
+                        
+                st.write("--- Test /bookings avec filter[start_at] ---")
+                r_start = requests.get(f"{qc.base_url}/bookings?filter[start_at]=2026-06-27&per_page=100", headers=headers)
+                json_start = r_start.json()
+                data_start = json_start.get("data", [])
+                st.write(f"Nombre de bookings trouvés (start_at): {len(data_start)}")
                 
-                # Check page total_pages - 50
-                test_page = max(1, total_pages - 50)
-                r_test = requests.get(f"{qc.base_url}/bookings?page={test_page}&per_page=100", headers=headers)
-                data_test = r_test.json().get("data", [])
-                
-                if data_test:
-                    st.write(f"Réservations sur la page {test_page} :")
-                    for d in data_test[:5]:
-                        st.write(f"- ID: {d.get('id')}, Créé: {d.get('created_at')}, Start: {d.get('agenda', {}).get('start_at')}")
-                else:
-                    st.write(f"La page {test_page} est vide.")
-                    
-                # Test Supabase UPSERT
-                from modules.supabase_client import get_supabase_client
-                st.write("Test Supabase UPSERT...")
-                # We will just make a dummy request to see if on_conflict throws 400
-                dummy_row = [{"qweekle_booking_id": "test_dummy_id_123", "event_type": "test"}]
-                url = st.secrets["supabase"]["url"]
-                key = st.secrets["supabase"]["key"]
-                h_supa = {
-                    "apikey": key,
-                    "Authorization": f"Bearer {key}",
-                    "Content-Type": "application/json",
-                    "Prefer": "resolution=merge-duplicates"
-                }
-                r_supa = requests.post(f"{url}/rest/v1/booking_activities?on_conflict=qweekle_booking_id", headers=h_supa, json=dummy_row)
-                st.write(f"Supabase UPSERT Status: {r_supa.status_code}")
-                if r_supa.status_code not in (200, 201):
-                    st.write(f"Erreur Supabase: {r_supa.text}")
-                    
             except Exception as e:
                 st.error(str(e))
