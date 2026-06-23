@@ -1108,22 +1108,30 @@ if __name__ == "__main__":
                 qc = QweekleClient()
                 headers = {"Authorization": f"Bearer {qc.api_key}", "Accept": "application/json"}
                 
-                endpoints_to_test = [
-                    "/agendas?filter[date]=2026-06-27",
-                    "/agendas?filter[start_at]=2026-06-27",
-                    "/events?filter[date]=2026-06-27",
-                    "/sessions?filter[date]=2026-06-27",
-                    "/activities?filter[date]=2026-06-27"
-                ]
-                
-                st.write("--- Exploration API Qweekle ---")
-                for ep in endpoints_to_test:
-                    r = requests.get(f"{qc.base_url}{ep}", headers=headers)
-                    if r.status_code == 200:
-                        data = r.json().get("data", [])
-                        st.write(f"✅ {ep} -> OK! {len(data)} items")
-                    else:
-                        st.write(f"❌ {ep} -> Erreur {r.status_code}")
+                st.write("--- Exploration API Qweekle /agendas ---")
+                r = requests.get(f"{qc.base_url}/agendas?filter[start_at]=2026-06-27&per_page=100", headers=headers)
+                if r.status_code == 200:
+                    data = r.json().get("data", [])
+                    st.write(f"✅ OK! {len(data)} items")
+                    if data:
+                        first_item = data[0]
+                        st.write("Clés du premier item:", list(first_item.keys()))
+                        
+                        # Print some relevant info to see if we have order_id, label, etc.
+                        for d in data[:3]:
+                            st.write(f"- ID: {d.get('id')}")
+                            if 'booking' in d:
+                                b = d['booking']
+                                st.write(f"  Booking ID: {b.get('id')}, Order ID: {b.get('order_id')}, Label: {b.get('label')}")
+                            if 'order_item' in d:
+                                oi = d['order_item']
+                                st.write(f"  Order Item ID: {oi.get('id')}, Label: {oi.get('label')}")
+                            if 'activity' in d:
+                                act = d['activity']
+                                st.write(f"  Activity: {act.get('label')}")
+                            st.write(f"  Start: {d.get('start_at')}")
+                else:
+                    st.write(f"❌ Erreur {r.status_code}")
                 
             except Exception as e:
                 st.error(str(e))
