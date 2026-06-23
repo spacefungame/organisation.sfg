@@ -124,7 +124,8 @@ export default {
       
       const headers_qweekle = {
         "Authorization": "Bearer " + QWEEKLE_API_KEY,
-        "Content-Type": "application/json"
+        "Content-Type": "application/json",
+        "Accept": "application/json"
       };
 
       const headers_supa = {
