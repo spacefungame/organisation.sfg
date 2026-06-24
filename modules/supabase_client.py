@@ -155,8 +155,11 @@ def activities_to_reservations(
     reservations = []
 
     for order_id, acts in groups.items():
-        # Trier par pack_step
-        acts.sort(key=lambda a: a.get("pack_step", 0))
+        # On trie les activités chronologiquement
+        acts.sort(key=lambda a: a.get("start_at") or "")
+        
+        # Et par étape de pack (1, 2, 3...) en gérant les valeurs None
+        acts.sort(key=lambda a: a.get("pack_step") or 0)
 
         # Filtrer : uniquement les anniversaires si demandé
         if birthday_only:
