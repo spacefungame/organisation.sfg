@@ -712,84 +712,95 @@ class QweekleClient:
             json_data = r_init.json()
             
             # Qweekle use 'metadata' or 'meta'
-            meta = json_data.get("metadata") or json_data.get("meta") or {}
+    def run_full_sync(self, progress_callback=None) -> int:
+        """
+        Détruit les mauvaises données (manual_sync) et resynchronise proprement
+        les commandes récentes depuis l'endpoint /orders.
+        """
+        from modules.supabase_client import get_supabase_client, upsert_booking_activities
+        db = get_supabase_client()
+        total_upserted = 0
+        try:
+            # 1. Nettoyer les doublons
+            if progress_callback:
+                progress_callback(0.1, "Nettoyage des doublons (manual_sync)...")
+            db.table("booking_activities").delete().eq("event_type", "manual_sync").execute()
+
+            # 2. Parcourir les dernières pages de /orders
+            headers = {
+                "Authorization": f"Bearer {self.api_key}", 
+                "Content-Type": "application/json",
+                "Accept": "application/json"
+            }
             
-            # Chercher total_pages ou last_page
-            total_pages = 1
-            if "pagination" in meta:
-                total_pages = meta["pagination"].get("total_pages", 1)
-            elif "total_pages" in meta:
-                total_pages = meta["total_pages"]
-            elif "last_page" in meta:
-                total_pages = meta["last_page"]
-            elif "lastPage" in meta:
-                total_pages = meta["lastPage"]
+            if progress_callback:
+                progress_callback(0.2, "Recherche de la dernière page /orders...")
+            r_init = requests.get(f"{self.base_url}/orders?page=1&per_page=100", headers=headers, timeout=10)
+            if r_init.status_code != 200:
+                return 0
+                
+            meta = r_init.json().get("meta") or r_init.json().get("metadata") or {}
+            total_pages = meta.get("lastPage", meta.get("last_page", meta.get("pagination", {}).get("total_pages", 1)))
             
-            # On va récupérer les 100 dernières pages (les bookings les plus récents)
-            # pour remonter suffisamment loin dans le temps et rattraper les vieilles réservations.
-            pages_to_fetch = min(total_pages, 100)
+            pages_to_fetch = min(total_pages, 20) # 2000 commandes = ~1-2 mois
             start_page = total_pages - pages_to_fetch + 1
             
-            total_upserted = 0
-            
+            existing_orders_res = db.table("booking_activities").select("order_id").execute()
+            existing_orders = set(r["order_id"] for r in existing_orders_res.data if r.get("order_id"))
+
             for i, page in enumerate(range(start_page, total_pages + 1)):
                 if progress_callback:
-                    progress_callback(i / pages_to_fetch, f"Récupération page {page}/{total_pages}...")
+                    progress_callback(0.2 + 0.8 * (i / pages_to_fetch), f"Analyse page {page}/{total_pages}...")
                     
-                r = requests.get(
-                    f"{self.base_url}/bookings?page={page}&per_page=100",
-                    headers=headers,
-                    timeout=_API_TIMEOUT
-                )
-                if r.status_code == 200:
-                    bookings = r.json().get("data", [])
-                    # Formater comme le webhook
-                    rows = []
-                    for b in bookings:
-                        # Gérer le format imbriqué de l'API /bookings
-                        order_item = b.get("order_item") or {}
-                        activity = b.get("activity") or {}
-                        agenda = b.get("agenda") or {}
-                        client = b.get("client") or {}
+                r = requests.get(f"{self.base_url}/orders?page={page}&per_page=100&include=items,client", headers=headers, timeout=10)
+                if r.status_code != 200:
+                    continue
+                    
+                orders = r.json().get("data", [])
+                rows = []
+                for o in orders:
+                    o_id = o.get("id", "")
+                    if o_id in existing_orders:
+                        continue # Déjà synchronisé par webhook
                         
-                        # Essayer de trouver un label qui pourrait servir de catégorie
-                        cat_label = order_item.get("label", "")
-                        if not cat_label:
-                            cat_label = activity.get("label", "")
+                    client = o.get("client") or {}
+                    items = o.get("items", [])
+                    for step, item in enumerate(items):
+                        start = item.get("start_at")
+                        if not start:
+                            continue
                             
-                        # Mettre par défaut l'order_id sur l'id s'il est manquant
-                        o_id = order_item.get("order_id") or b.get("order_id") or b.get("id", "")
-                        
+                        # Si l'order n'a jamais été vu, on l'ajoute
                         rows.append({
-                            "qweekle_booking_id": b.get("id", ""),
+                            "qweekle_booking_id": item.get("id", ""), # Utiliser l'item ID comme clé
                             "order_id": o_id,
-                            "order_item_id": order_item.get("id") or b.get("order_item_id", ""),
-                            "pack_step": b.get("pack_step", 0),
-                            "label": activity.get("label") or b.get("label", ""),
-                            "category": cat_label or b.get("category", ""),
-                            "subcategory": b.get("subcategory", ""),
-                            "location": agenda.get("location", {}).get("label") if agenda.get("location") else b.get("location", ""),
-                            "duration": activity.get("duration") or b.get("duration", 0),
-                            "qty": b.get("qty", 0),
-                            "start_at": agenda.get("start_at") or b.get("start_at"),
-                            "end_at": agenda.get("end_at") or b.get("end_at"),
+                            "order_item_id": item.get("id", ""),
+                            "pack_step": step + 1,
+                            "label": item.get("label", ""),
+                            "category": item.get("category", ""),
+                            "subcategory": item.get("subcategory", ""),
+                            "location": item.get("location", {}).get("label") if isinstance(item.get("location"), dict) else item.get("location", ""),
+                            "duration": item.get("duration", 0),
+                            "qty": item.get("qty", 0),
+                            "start_at": start,
+                            "end_at": item.get("end_at"),
                             "client_firstname": client.get("firstname", ""),
                             "client_lastname": client.get("lastname", ""),
                             "client_email": client.get("email", ""),
                             "client_phone": client.get("phone", ""),
-                            "source": b.get("source", ""),
-                            "global_status": b.get("state") or b.get("global_status", ""),
+                            "source": o.get("source", ""),
+                            "global_status": o.get("state", "confirmed"),
                             "event_type": "manual_sync",
-                            "raw_payload": b
+                            "raw_payload": item
                         })
-                    if rows:
-                        success = upsert_booking_activities(rows)
-                        if success:
-                            total_upserted += len(rows)
-                            
-            if progress_callback:
-                progress_callback(1.0, f"Terminé ! {total_upserted} réservations synchronisées.")
                 
+                if rows:
+                    success = upsert_booking_activities(rows)
+                    if success:
+                        total_upserted += len(rows)
+
+            if progress_callback:
+                progress_callback(1.0, f"Terminé ! {total_upserted} activités manquantes récupérées.")
             return total_upserted
             
         except Exception as e:
