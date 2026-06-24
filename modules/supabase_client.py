@@ -82,6 +82,44 @@ def upsert_booking_activities(rows: list[dict]) -> bool:
         return False
 
 
+def delete_manual_sync_activities() -> bool:
+    """Supprime toutes les activités dont l'event_type est manual_sync."""
+    creds = _get_credentials()
+    if not creds:
+        return False
+    url, key = creds
+    try:
+        r = requests.delete(
+            f"{url}/rest/v1/booking_activities?event_type=eq.manual_sync",
+            headers=_headers(key),
+            timeout=15,
+        )
+        r.raise_for_status()
+        return True
+    except Exception as e:
+        logger.error("Erreur delete manual_sync: %s", e)
+        return False
+
+
+def get_all_order_ids() -> set[str]:
+    """Récupère tous les order_id uniques existants dans Supabase."""
+    creds = _get_credentials()
+    if not creds:
+        return set()
+    url, key = creds
+    try:
+        r = requests.get(
+            f"{url}/rest/v1/booking_activities?select=order_id",
+            headers=_headers(key),
+            timeout=15,
+        )
+        r.raise_for_status()
+        return {item["order_id"] for item in r.json() if item.get("order_id")}
+    except Exception as e:
+        logger.error("Erreur get_all_order_ids: %s", e)
+        return set()
+
+
 def _utc_to_local(iso_str: str) -> datetime.datetime:
     """Convertit un timestamp ISO UTC en datetime local (Belgique)."""
     # Qweekle envoie : "2026-08-28T15:00:00.000000Z"

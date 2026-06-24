@@ -692,14 +692,13 @@ class QweekleClient:
         Détruit les mauvaises données (manual_sync) et resynchronise proprement
         les commandes récentes depuis l'endpoint /orders.
         """
-        from modules.supabase_client import get_supabase_client, upsert_booking_activities
-        db = get_supabase_client()
+        from modules.supabase_client import upsert_booking_activities, delete_manual_sync_activities, get_all_order_ids
         total_upserted = 0
         try:
             # 1. Nettoyer les doublons
             if progress_callback:
                 progress_callback(0.1, "Nettoyage des doublons (manual_sync)...")
-            db.table("booking_activities").delete().eq("event_type", "manual_sync").execute()
+            delete_manual_sync_activities()
 
             # 2. Parcourir les dernières pages de /orders
             headers = {
@@ -720,8 +719,7 @@ class QweekleClient:
             pages_to_fetch = min(total_pages, 20) # 2000 commandes = ~1-2 mois
             start_page = total_pages - pages_to_fetch + 1
             
-            existing_orders_res = db.table("booking_activities").select("order_id").execute()
-            existing_orders = set(r["order_id"] for r in existing_orders_res.data if r.get("order_id"))
+            existing_orders = get_all_order_ids()
 
             for i, page in enumerate(range(start_page, total_pages + 1)):
                 if progress_callback:
