@@ -689,31 +689,6 @@ class QweekleClient:
 
     def run_full_sync(self, progress_callback=None) -> int:
         """
-        Récupère les dernières pages de réservations (où se trouvent les plus récentes)
-        et les insère/met à jour dans Supabase.
-        Renvoie le nombre de réservations insérées.
-        """
-        from modules.supabase_client import upsert_booking_activities
-        
-        try:
-            headers = {
-                "Authorization": f"Bearer {self.api_key}", 
-                "Content-Type": "application/json",
-                "Accept": "application/json"
-            }
-            
-            # Déterminer la pagination
-            r_init = requests.get(
-                f"{self.base_url}/bookings?page=1&per_page=100",
-                headers=headers,
-                timeout=10
-            )
-            r_init.raise_for_status()
-            json_data = r_init.json()
-            
-            # Qweekle use 'metadata' or 'meta'
-    def run_full_sync(self, progress_callback=None) -> int:
-        """
         Détruit les mauvaises données (manual_sync) et resynchronise proprement
         les commandes récentes depuis l'endpoint /orders.
         """
