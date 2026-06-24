@@ -716,7 +716,7 @@ class QweekleClient:
             meta = r_init.json().get("meta") or r_init.json().get("metadata") or {}
             total_pages = meta.get("lastPage", meta.get("last_page", meta.get("pagination", {}).get("total_pages", 1)))
             
-            pages_to_fetch = min(total_pages, 20) # 2000 commandes = ~1-2 mois
+            pages_to_fetch = min(total_pages, 100) # 10000 commandes = ~4-6 mois
             start_page = total_pages - pages_to_fetch + 1
             
             existing_orders = get_all_order_ids()
