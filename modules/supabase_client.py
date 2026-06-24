@@ -184,8 +184,26 @@ def activities_to_reservations(
             client_name = f"⚠️ Client inconnu ({short_id})"
 
         # ── Plage horaire globale ─────────────────────────────
-        start_times = [a["start_at"] for a in acts if a.get("start_at")]
-        end_times = [a["end_at"] for a in acts if a.get("end_at")]
+        start_times = []
+        end_times = []
+        for a in acts:
+            s = a.get("start_at")
+            if not s:
+                continue
+            start_times.append(s)
+            
+            e = a.get("end_at")
+            if e:
+                end_times.append(e)
+            else:
+                # Calculer end_at = start_at + duration
+                try:
+                    s_dt = dtparser.parse(s)
+                    dur = a.get("duration") or 0
+                    e_dt = s_dt + datetime.timedelta(minutes=int(dur))
+                    end_times.append(e_dt.isoformat())
+                except Exception:
+                    pass
 
         if not start_times or not end_times:
             continue
@@ -208,20 +226,24 @@ def activities_to_reservations(
             cat = (a.get("category", "") or "").lower()
             subcat = (a.get("subcategory", "") or "").lower()
             dur = a.get("duration", 0) or 0
+            
+            # Combine label, cat, subcat for searching, but prioritize label for specific games
+            combined = f"{label} {cat} {subcat}"
 
-            if "laser" in label or "laser" in cat:
-                # Ignorer si c'est la catégorie "Anniversaire" avec location laser
-                if "partie" in subcat or "laser" in subcat or "laser" in label:
-                    laser_count += 1
-            elif "team" in label or "team" in cat:
+            if "team" in label or "team" in subcat:
                 has_team = True
-            elif "quiz" in label or "quiz" in cat:
+            elif "quiz" in label or "quiz" in subcat:
                 quiz_minutes += dur
+            elif "laser" in label or "laser" in subcat or ("laser" in cat and "partie" in combined):
+                # Éviter de compter plusieurs fois la même partie si on l'a déjà comptée via un autre label?
+                # Qweekle sépare souvent "Explications" et "Partie". On compte uniquement si c'est une "partie".
+                if "partie" in label or "partie" in subcat or "laser" in label:
+                    laser_count += 1
 
             # Détecter l'activité "Table réservée" = pause gâteau
-            # On détecte par la catégorie "Anniversaire" (la seule activité
-            # de cette catégorie est la réservation de table)
-            if "anniversaire" in cat and a.get("start_at"):
+            if "anniversaire" in cat and "table" in label and a.get("start_at"):
+                table_start_local = _utc_to_local(a["start_at"])
+            elif "table" in label and "réserv" in label and a.get("start_at"):
                 table_start_local = _utc_to_local(a["start_at"])
 
         parts = []
