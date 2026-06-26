@@ -307,7 +307,12 @@ def _render_sidebar() -> datetime.date:
         )
         # ── Navigation par date ──────────────────────────────
         if "nav_date" not in st.session_state:
-            st.session_state.nav_date = datetime.date.today()
+            today = datetime.date.today()
+            # Par défaut, se placer sur le samedi à venir si on ouvre l'app en semaine (lundi-vendredi)
+            if today.weekday() < 5:
+                st.session_state.nav_date = today + datetime.timedelta(days=(5 - today.weekday()))
+            else:
+                st.session_state.nav_date = today
 
         # Flèches jour
         col_pd, col_tj, col_nd = st.columns([1, 1, 1])
