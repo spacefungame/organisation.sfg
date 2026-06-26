@@ -723,14 +723,11 @@ class QweekleClient:
             meta = r_init.json().get("meta") or r_init.json().get("metadata") or {}
             total_pages = meta.get("lastPage", meta.get("last_page", meta.get("pagination", {}).get("total_pages", 1)))
             
-            pages_to_fetch = min(total_pages, 100) # 10000 commandes = ~4-6 mois
-            start_page = total_pages - pages_to_fetch + 1
-            
-            existing_orders = get_all_order_ids()
+            pages_to_fetch = min(total_pages, 100) # 10000 commandes récentes = ~4-6 mois
 
-            for i, page in enumerate(range(start_page, total_pages + 1)):
+            for i, page in enumerate(range(1, pages_to_fetch + 1)):
                 if progress_callback:
-                    progress_callback(0.2 + 0.8 * (i / pages_to_fetch), f"Analyse page {page}/{total_pages}...")
+                    progress_callback(0.2 + 0.8 * (i / pages_to_fetch), f"Analyse page {page}/{pages_to_fetch}...")
                     
                 r = requests.get(f"{self.base_url}/orders?page={page}&per_page=100&include=items,client", headers=headers, timeout=10)
                 if r.status_code != 200:
@@ -740,8 +737,8 @@ class QweekleClient:
                 rows = []
                 for o in orders:
                     o_id = o.get("id", "")
-                    if o_id in existing_orders:
-                        continue # Déjà synchronisé par webhook
+                    if not o_id:
+                        continue
                         
                     client = o.get("client") or {}
                     items = o.get("items", [])
