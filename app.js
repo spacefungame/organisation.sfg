@@ -425,6 +425,13 @@ function renderPlanningComplet(filterCategory = currentQweekleCategoryFilter) {
     // Récupérer toutes les réservations Qweekle pour cette date
     let reservations = appState.getQweekleReservationsForDate(appState.currentDate);
 
+    // Déclencher une synchronisation automatique transparente en tâche de fond si la date n'a pas encore été synchronisée
+    appState._autoSyncedDates = appState._autoSyncedDates || {};
+    if (!appState._autoSyncedDates[appState.currentDate]) {
+        appState._autoSyncedDates[appState.currentDate] = true;
+        setTimeout(() => { syncQweekleReservations(true); }, 10);
+    }
+
     // Filtrage par catégorie
     if (filterCategory !== "all") {
         reservations = reservations.filter(res => res.categories && res.categories.includes(filterCategory));
@@ -582,23 +589,26 @@ function filterQweeklePlanning(category) {
     renderPlanningComplet(category);
 }
 
-async function syncQweekleReservations() {
+async function syncQweekleReservations(silent = false) {
     const btn = document.getElementById("btn-sync-qweekle");
     const badge = document.getElementById("qweekle-status-badge");
-    if (btn) {
+    if (btn && !silent) {
         btn.disabled = true;
         btn.innerHTML = `⌛ Synchronisation en cours...`;
     }
 
     const result = await appState.fetchAndSyncQweekleReservations(appState.currentDate);
 
-    if (btn) {
+    if (btn && !silent) {
         btn.disabled = false;
         btn.innerHTML = `⚡ Synchroniser API Qweekle`;
     }
 
     if (badge) {
-        if (result.status === "success") {
+        if (result.status === "success" && result.source === "supabase") {
+            badge.innerHTML = `<span class="qweekle-status-icon">🟢</span><span><strong>Base de Production Live (Webhooks Qweekle)</strong> — ${result.data.length} dossier(s) en direct | Clé API : <code>a712eb...7d84</code></span>`;
+            badge.style.borderColor = "var(--accent-success)";
+        } else if (result.status === "success") {
             badge.innerHTML = `<span class="qweekle-status-icon">🟢</span><span><strong>Synchronisé à l'instant via Qweekle API</strong> (${result.data.length} dossier(s)) | Clé active : <code>a712eb...7d84</code></span>`;
             badge.style.borderColor = "var(--accent-success)";
         } else {
@@ -607,7 +617,10 @@ async function syncQweekleReservations() {
         }
     }
 
-    renderPlanningComplet();
+    // Ré-afficher uniquement si nous sommes sur l'onglet planning complet ou si la synchro n'était pas un simple check arrière-plan qui a déjà un affichage en cours
+    if (appState.currentTab === "planning-complet") {
+        renderPlanningComplet();
+    }
 }
 
 // ============================================================================

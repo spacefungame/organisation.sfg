@@ -169,40 +169,251 @@ class AppStateManager {
     }
 
     async fetchAndSyncQweekleReservations(dateStr) {
-        if (typeof CONFIG === "undefined" || !CONFIG.QWEEKLE_API_KEY) {
+        if (typeof CONFIG === "undefined") {
             return { status: "fallback", data: this.getQweekleReservationsForDate(dateStr) };
         }
 
-        const url = `${CONFIG.QWEEKLE_API_URL}/bookings?filter[agenda.starts_between]=${dateStr}T00:00:00,${dateStr}T23:59:59&withOrder=true`;
-        try {
-            const response = await fetch(url, {
-                method: "GET",
-                headers: {
-                    "Authorization": `Bearer ${CONFIG.QWEEKLE_API_KEY}`,
-                    "Accept": "application/json"
+        // 1. Tenter en priorité la base de production Live (Webhooks Qweekle -> Supabase booking_activities)
+        if (CONFIG.SUPABASE_URL && CONFIG.SUPABASE_KEY) {
+            try {
+                const nextDate = new Date(dateStr);
+                nextDate.setDate(nextDate.getDate() + 1);
+                const nextDateStr = nextDate.toISOString().split("T")[0];
+                const supaUrl = `${CONFIG.SUPABASE_URL}/rest/v1/booking_activities?select=*&start_at=gte.${dateStr}T00:00:00Z&start_at=lt.${nextDateStr}T23:59:59Z&order=order_id,pack_step.asc`;
+                
+                const response = await fetch(supaUrl, {
+                    method: "GET",
+                    headers: {
+                        "apikey": CONFIG.SUPABASE_KEY,
+                        "Authorization": `Bearer ${CONFIG.SUPABASE_KEY}`,
+                        "Accept": "application/json"
+                    }
+                });
+
+                if (response.ok) {
+                    const rows = await response.json();
+                    const parsedList = this.parseSupabaseActivitiesToBookings(rows || [], dateStr);
+                    
+                    if (this.hasLocalStorage()) {
+                        const cachedStore = JSON.parse(localStorage.getItem("SFG_QWEEKLE_STORE") || "{}");
+                        cachedStore[dateStr] = parsedList;
+                        localStorage.setItem("SFG_QWEEKLE_STORE", JSON.stringify(cachedStore));
+                    }
+                    return { status: "success", data: parsedList, source: "supabase" };
+                }
+            } catch (error) {
+                console.warn("⚠️ Erreur de synchronisation Supabase Live :", error.message);
+            }
+        }
+
+        // 2. Tenter en direct via l'API REST officielle de Qweekle si disponible
+        if (CONFIG.QWEEKLE_API_KEY && CONFIG.QWEEKLE_API_URL) {
+            const url = `${CONFIG.QWEEKLE_API_URL}/bookings?filter[agenda.starts_between]=${dateStr}T00:00:00,${dateStr}T23:59:59&withOrder=true`;
+            try {
+                const response = await fetch(url, {
+                    method: "GET",
+                    headers: {
+                        "Authorization": `Bearer ${CONFIG.QWEEKLE_API_KEY}`,
+                        "Accept": "application/json"
+                    }
+                });
+
+                if (response.ok) {
+                    const json = await response.json();
+                    const parsedList = this.parseRawQweekleBookings(json.data || [], dateStr);
+                    if (this.hasLocalStorage()) {
+                        const cachedStore = JSON.parse(localStorage.getItem("SFG_QWEEKLE_STORE") || "{}");
+                        cachedStore[dateStr] = parsedList;
+                        localStorage.setItem("SFG_QWEEKLE_STORE", JSON.stringify(cachedStore));
+                    }
+                    return { status: "success", data: parsedList, source: "qweekle_rest" };
+                }
+            } catch (error) {
+                console.warn("⚠️ Mode démo activé pour Qweekle (ou erreur réseau/CORS) :", error.message);
+            }
+        }
+
+        return { status: "fallback", data: this.getQweekleReservationsForDate(dateStr) };
+    }
+
+    parseSupabaseActivitiesToBookings(rows, dateStr) {
+        // Filtrer par date locale du dossier (Belgique / fuseau local)
+        const filteredRows = rows.filter(r => {
+            if (!r.start_at) return false;
+            const rowDate = new Date(r.start_at).toLocaleDateString("en-CA", { timeZone: "Europe/Brussels" });
+            return rowDate === dateStr;
+        });
+
+        // Regrouper par order_id ou par identifiant unique de réservation
+        const groups = {};
+        filteredRows.forEach(r => {
+            const oid = r.order_id || r.qweekle_booking_id || r.id;
+            if (!groups[oid]) groups[oid] = [];
+            groups[oid].push(r);
+        });
+
+        const bookings = [];
+        Object.keys(groups).forEach(oid => {
+            const group = groups[oid];
+            // Tri chronologique des activités au sein du dossier
+            group.sort((a, b) => new Date(a.start_at) - new Date(b.start_at));
+
+            // 1. Informations Client
+            let nom = "Client Inconnu";
+            let prenom = "";
+            let societe = "";
+
+            for (const act of group) {
+                const fn = act.client_firstname || act.raw_payload?.client?.firstname || "";
+                const ln = act.client_lastname || act.raw_payload?.client?.lastname || "";
+                const soc = act.raw_payload?.client?.society || "";
+                const clientType = act.raw_payload?.client?.type || "";
+
+                if (fn || ln || soc) {
+                    prenom = fn;
+                    if (clientType === "association" || clientType === "entreprise" || soc) {
+                        societe = soc;
+                        nom = (ln ? `${ln} (${soc})` : soc).toUpperCase();
+                    } else {
+                        nom = ln.toUpperCase() || "CLIENT";
+                    }
+                    break;
+                }
+            }
+            if (nom === "Client Inconnu") {
+                const email = group.find(a => a.client_email || a.raw_payload?.client?.email);
+                if (email) {
+                    const em = email.client_email || email.raw_payload?.client?.email;
+                    nom = em.split("@")[0].toUpperCase();
+                } else {
+                    nom = `CLIENT (${oid.slice(-8)})`;
+                }
+            }
+
+            // 2. Plage horaire globale (arrivée et départ)
+            const earliestDate = new Date(group[0].start_at);
+            let maxEndMs = earliestDate.getTime();
+            group.forEach(act => {
+                const sMs = new Date(act.start_at).getTime();
+                const eMs = act.end_at ? new Date(act.end_at).getTime() : sMs + (Number(act.duration) || 60) * 60000;
+                if (eMs > maxEndMs) maxEndMs = eMs;
+            });
+            const latestDate = new Date(maxEndMs);
+
+            const heureArrivee = earliestDate.toLocaleTimeString([], { hour: '2-digit', minute: '2-digit' });
+            const heureDepart = latestDate.toLocaleTimeString([], { hour: '2-digit', minute: '2-digit' });
+
+            // 3. Nombre de personnes
+            const nbPersonnes = Math.max(...group.map(a => Number(a.qty) || 0), 1);
+
+            // 4. Activités détaillées (si plusieurs occurrences, on les affiche toutes)
+            const activites = group.map(act => {
+                const s = new Date(act.start_at);
+                const e = act.end_at ? new Date(act.end_at) : new Date(s.getTime() + (Number(act.duration) || 60) * 60000);
+                return {
+                    heureDebut: s.toLocaleTimeString([], { hour: '2-digit', minute: '2-digit' }),
+                    heureFin: e.toLocaleTimeString([], { hour: '2-digit', minute: '2-digit' }),
+                    nom: act.label || "Activité Qweekle",
+                    zone: act.location || act.category || "Zone Générale"
+                };
+            });
+
+            // 5. Nom du pack
+            const mainActs = group.filter(a => !(a.label || "").toLowerCase().includes("accueil") && !(a.label || "").toLowerCase().includes("table réservée"));
+            const nomPack = mainActs.length > 0 ? mainActs.map(a => a.label).join(" + ") : (group.map(a => a.label).join(" + ") || "Réservation Qweekle");
+
+            // 6. Catégories détectées
+            const allTextForCats = `${nom} ${societe} ${nomPack} ${group.map(a => `${a.label || ''} ${a.category || ''} ${a.subcategory || ''} ${a.raw_payload?.client?.type || ''}`).join(" ")}`;
+            const categories = this.detectQweekleCategories(nom, societe, nomPack, allTextForCats);
+
+            // 7. Options supplémentaires choisies (produits / gâteaux / options)
+            const options = [];
+            group.forEach(act => {
+                const catLower = (act.category || "").toLowerCase();
+                const lblLower = (act.label || "").toLowerCase();
+                if (catLower.includes("option") || catLower.includes("produit") || lblLower.includes("gâteau") || lblLower.includes("gateau") || lblLower.includes("kidibul") || lblLower.includes("brownie") || lblLower.includes("donut") || lblLower.includes("bonbon") || lblLower.includes("chips") || lblLower.includes("granit") || lblLower.includes("crêpe") || lblLower.includes("crepe")) {
+                    if (!options.includes(act.label)) options.push(act.label);
+                }
+                if (act.raw_payload?.order?.items && Array.isArray(act.raw_payload.order.items)) {
+                    act.raw_payload.order.items.forEach(oi => {
+                        if (oi.label && !options.includes(oi.label)) options.push(oi.label);
+                    });
                 }
             });
 
-            if (!response.ok) {
-                throw new Error(`Erreur HTTP Qweekle (${response.status})`);
+            // 8. Sous-compte enfant anniversaire (si réservation anniversaire)
+            let enfantAnniversaire = null;
+            if (categories.includes("anniversaire")) {
+                const allSubclients = [];
+                group.forEach(act => {
+                    if (act.raw_payload && Array.isArray(act.raw_payload.subclients)) {
+                        act.raw_payload.subclients.forEach(sc => allSubclients.push(sc));
+                    } else if (act.raw_payload?.client?.sub_clients && Array.isArray(act.raw_payload.client.sub_clients)) {
+                        act.raw_payload.client.sub_clients.forEach(sc => allSubclients.push(sc));
+                    }
+                });
+
+                if (allSubclients.length > 0) {
+                    const targetDateObj = new Date(dateStr);
+                    let bestChild = allSubclients[0];
+                    let bestDist = 9999;
+
+                    allSubclients.forEach(sc => {
+                        if (sc.birthday_at || sc.birthdate) {
+                            const bDate = new Date(sc.birthday_at || sc.birthdate);
+                            const dist = Math.abs((bDate.getMonth() - targetDateObj.getMonth()) * 30 + (bDate.getDate() - targetDateObj.getDate()));
+                            if (dist < bestDist) {
+                                bestDist = dist;
+                                bestChild = sc;
+                            }
+                        }
+                    });
+
+                    let age = bestChild.age || "";
+                    if (!age && (bestChild.birthday_at || bestChild.birthdate)) {
+                        const bYear = new Date(bestChild.birthday_at || bestChild.birthdate).getFullYear();
+                        if (!isNaN(bYear)) age = targetDateObj.getFullYear() - bYear;
+                    }
+
+                    enfantAnniversaire = {
+                        prenom: bestChild.firstname || bestChild.prenom || bestChild.lastname || "Enfant fêté",
+                        age: age ? Number(age) : "Non précisé",
+                        dateNaissance: bestChild.birthday_at || bestChild.birthdate || null,
+                        sousCompteId: bestChild.id || null
+                    };
+                } else {
+                    for (const act of group) {
+                        const ext = this.extractBirthdayChildInfo(act.raw_payload || act, categories);
+                        if (ext) {
+                            enfantAnniversaire = ext;
+                            break;
+                        }
+                    }
+                }
             }
 
-            const json = await response.json();
-            const parsedList = this.parseRawQweekleBookings(json.data || [], dateStr);
-            
-            // Mettre en cache dans le stockage local
-            if (this.hasLocalStorage()) {
-                const cachedStore = JSON.parse(localStorage.getItem("SFG_QWEEKLE_STORE") || "{}");
-                cachedStore[dateStr] = parsedList;
-                localStorage.setItem("SFG_QWEEKLE_STORE", JSON.stringify(cachedStore));
-            }
+            bookings.push({
+                id: `QW-${oid}`,
+                nom,
+                prenom,
+                societe,
+                heureArrivee,
+                heureDepart,
+                nbPersonnes,
+                nomPack,
+                typeActivite: group[0].category || "Activité Qweekle",
+                categories,
+                enfantAnniversaire,
+                activites,
+                options
+            });
+        });
 
-            return { status: "success", data: parsedList };
-        } catch (error) {
-            console.warn("⚠️ Mode démo activé pour Qweekle (ou erreur réseau/CORS) :", error.message);
-            return { status: "fallback", data: this.getQweekleReservationsForDate(dateStr) };
-        }
+        // Trier les réservations par heure d'arrivée chronologique
+        bookings.sort((a, b) => a.heureArrivee.localeCompare(b.heureArrivee));
+        return bookings;
     }
+
 
     parseRawQweekleBookings(rawBookings, dateStr) {
         // Transformation des données brutes Qweekle vers notre format complet multi-occurrences

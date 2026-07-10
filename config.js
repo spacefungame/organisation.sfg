@@ -71,9 +71,11 @@ const CONFIG = {
         ],
     },
 
-    // Configuration officielle de l'API Qweekle
+    // Configuration officielle de l'API Qweekle & Base de Données Live (Supabase Webhooks)
     QWEEKLE_API_KEY: "a712eb126838aeb58223d70725227d84",
     QWEEKLE_API_URL: "https://api.qweekle.io/api",
+    SUPABASE_URL: "https://uyptbypqzfkdsvpdvwyz.supabase.co",
+    SUPABASE_KEY: "eyJhbGciOiJIUzI1NiIsInR5cCI6IkpXVCJ9.eyJpc3MiOiJzdXBhYmFzZSIsInJlZiI6InV5cHRieXBxemZrZHN2cGR2d3l6Iiwicm9sZSI6ImFub24iLCJpYXQiOjE3ODAxNTA1ODAsImV4cCI6MjA5NTcyNjU4MH0.ZEZxlWA9H0u6iP3IHn97XjqNABUEl3kqVcsecx9GPKg",
 
     // Données de réservations détaillées Qweekle (Structure officielle 100% complète et réaliste)
     // Utilisées en synchronisation directe ou en repli si l'appel API est bloqué (hors-ligne/CORS en local)
