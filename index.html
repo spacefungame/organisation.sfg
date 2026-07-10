@@ -246,17 +246,13 @@
         <section id="view-postit" class="view-section">
             <div class="view-header">
                 <div>
-                    <h2>📌 Post It - Tableau de Mémos & Notes</h2>
-                    <p class="view-subtitle">Consultez et ajoutez des consignes rapides pour l'équipe (notes générales ou liées à la date)</p>
+                    <h2>📌 Post It</h2>
+                    <p class="view-subtitle">Espace vierge (en attente de vos instructions...)</p>
                 </div>
-                <button type="button" class="btn-add" onclick="openPostItModal()">+ Nouveau Post-It</button>
             </div>
-
-            <h3 style="margin-top: 20px; color: var(--text-main); font-size: 1.25rem;">📌 Notes pour la date sélectionnée (<span id="postit-date-label"></span>)</h3>
-            <div id="postits-date-container" class="postits-grid"></div>
-
-            <h3 style="margin-top: 36px; color: var(--text-main); font-size: 1.25rem;">📌 Consignes Générales du Centre (Permanentes)</h3>
-            <div id="postits-general-container" class="postits-grid"></div>
+            <!-- Conteneurs masqués pour ne rien afficher pour l'instant -->
+            <div id="postits-date-container" style="display: none;"></div>
+            <div id="postits-general-container" style="display: none;"></div>
         </section>
 
     </main>
