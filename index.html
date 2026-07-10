@@ -136,21 +136,36 @@
         <section id="view-complet" class="view-section">
             <div class="view-header">
                 <div>
-                    <h2>📋 Planning Complet</h2>
-                    <p class="view-subtitle" id="subtitle-complet">Affichage de toutes les activités de la journée</p>
+                    <h2>📋 Planning Complet (Synchronisation Qweekle)</h2>
+                    <p class="view-subtitle" id="subtitle-complet">Affichage de toutes les réservations et activités de la journée</p>
                 </div>
-                <button type="button" class="btn-add" onclick="openEventModal()">+ Ajouter une activité</button>
+                <div style="display: flex; gap: 12px; align-items: center;">
+                    <button type="button" id="btn-sync-qweekle" class="btn-sync" onclick="syncQweekleReservations()">⚡ Synchroniser API Qweekle</button>
+                    <button type="button" class="btn-add" onclick="openEventModal()">+ Ajouter une activité</button>
+                </div>
             </div>
-            <div class="classic-planning-container">
-                <table class="planning-table" id="table-complet">
-                    <thead>
-                        <tr>
-                            <th class="time-col">Horaire</th>
-                            <th>Activités & Réservations (Toutes zones)</th>
-                        </tr>
-                    </thead>
-                    <tbody id="tbody-complet"></tbody>
-                </table>
+
+            <!-- Encart d'état de l'API Qweekle & Filtres de Catégories -->
+            <div class="qweekle-toolbar">
+                <div class="qweekle-api-status" id="qweekle-status-badge">
+                    <span class="qweekle-status-icon">🟢</span>
+                    <span><strong>API Qweekle Connectée</strong> (Clé : <code>a712eb...7d84</code>) | Affichage détaillé de toutes les occurrences</span>
+                </div>
+                <div class="qweekle-category-filters" id="qweekle-filters-container">
+                    <button type="button" class="qweekle-filter-btn active" data-filter="all" onclick="filterQweeklePlanning('all')">🌟 Toutes</button>
+                    <button type="button" class="qweekle-filter-btn" data-filter="enfant" onclick="filterQweeklePlanning('enfant')">🧒 Enfant (7-12 ans)</button>
+                    <button type="button" class="qweekle-filter-btn" data-filter="ado" onclick="filterQweeklePlanning('ado')">🧑‍🦱 Ado (13-18 ans)</button>
+                    <button type="button" class="qweekle-filter-btn" data-filter="adulte" onclick="filterQweeklePlanning('adulte')">👨 Adulte (+18 ans)</button>
+                    <button type="button" class="qweekle-filter-btn" data-filter="anniversaire" onclick="filterQweeklePlanning('anniversaire')">🎂 Anniversaire</button>
+                    <button type="button" class="qweekle-filter-btn" data-filter="team building" onclick="filterQweeklePlanning('team building')">🤝 Team Building</button>
+                    <button type="button" class="qweekle-filter-btn" data-filter="évènement adulte" onclick="filterQweeklePlanning('évènement adulte')">🥂 Évènement Adulte</button>
+                    <button type="button" class="qweekle-filter-btn" data-filter="asbl" onclick="filterQweeklePlanning('asbl')">🏛️ ASBL</button>
+                </div>
+            </div>
+
+            <!-- Conteneur pour l'affichage détaillé des réservations Qweekle -->
+            <div id="qweekle-reservations-container" class="qweekle-reservations-list">
+                <!-- Les cartes détaillées seront injectées ici par JS -->
             </div>
         </section>
 

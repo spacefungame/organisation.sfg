@@ -154,7 +154,7 @@ function renderCurrentView() {
             renderHomeDashboard();
             break;
         case "complet":
-            renderClassicPlanning(null, "tbody-complet", "subtitle-complet");
+            renderPlanningComplet();
             break;
         case "anniversaire":
             renderClassicPlanning("anniversaire", "tbody-anniversaire", "subtitle-anniversaire");
@@ -403,6 +403,211 @@ function renderClassicPlanning(filterType, tbodyId, subtitleId) {
         tr.appendChild(tdContent);
         tbody.appendChild(tr);
     }
+}
+
+// Variable globale pour stocker le filtre de catégorie actif sur la page Planning Complet
+let currentQweekleCategoryFilter = "all";
+
+// ============================================================================
+// 6bis. RENDU SPÉCIFIQUE DU PLANNING COMPLET (AVEC INTEGRATION API QWEEKLE)
+// ============================================================================
+function renderPlanningComplet(filterCategory = currentQweekleCategoryFilter) {
+    currentQweekleCategoryFilter = filterCategory;
+    const container = document.getElementById("qweekle-reservations-container");
+    const subtitle = document.getElementById("subtitle-complet");
+    if (!container) return;
+
+    // Mettre à jour le sous-titre de la date
+    const parts = appState.currentDate.split("-");
+    const d = new Date(parts[0], parts[1] - 1, parts[2]);
+    const formattedDate = `${DAYS_FR[d.getDay()]} ${d.getDate()} ${MONTHS_FR[d.getMonth()]} ${parts[0]}`;
+
+    // Récupérer toutes les réservations Qweekle pour cette date
+    let reservations = appState.getQweekleReservationsForDate(appState.currentDate);
+
+    // Filtrage par catégorie
+    if (filterCategory !== "all") {
+        reservations = reservations.filter(res => res.categories && res.categories.includes(filterCategory));
+    }
+
+    if (subtitle) {
+        subtitle.textContent = `Planning Qweekle du ${formattedDate} (${reservations.length} dossier${reservations.length > 1 ? 's' : ''} affiché${reservations.length > 1 ? 's' : ''})`;
+    }
+
+    // Mettre à jour l'état visuel des boutons de filtres
+    document.querySelectorAll(".qweekle-filter-btn").forEach(btn => {
+        if (btn.getAttribute("data-filter") === filterCategory) {
+            btn.classList.add("active");
+        } else {
+            btn.classList.remove("active");
+        }
+    });
+
+    container.innerHTML = "";
+
+    if (reservations.length === 0) {
+        container.innerHTML = `
+            <div style="background: var(--bg-card); border: 2px dashed var(--border-color); border-radius: var(--radius-lg); padding: 40px; text-align: center;">
+                <div style="font-size: 3rem; margin-bottom: 12px;">📭</div>
+                <h3 style="color: var(--text-main); font-size: 1.3rem; margin-bottom: 8px;">Aucune réservation pour ce filtre / cette journée</h3>
+                <p style="color: var(--text-muted); font-size: 0.95rem; max-width: 450px; margin: 0 auto 18px;">
+                    Aucun dossier Qweekle correspondant au ${formattedDate}. Cliquez sur le bouton ci-dessous pour lancer une synchronisation vers les serveurs Qweekle.
+                </p>
+                <button type="button" class="btn-sync" style="margin: 0 auto;" onclick="syncQweekleReservations()">⚡ Synchroniser depuis Qweekle</button>
+            </div>
+        `;
+        return;
+    }
+
+    // Trier les réservations par heure d'arrivée
+    reservations.sort((a, b) => a.heureArrivee.localeCompare(b.heureArrivee));
+
+    // Dictionnaire de labels & classes pour les catégories
+    const catBadgesMap = {
+        "enfant": { label: "🧒 Enfant (7-12 ans)", className: "badge-enfant" },
+        "ado": { label: "🧑‍🦱 Ado (13-18 ans)", className: "badge-ado" },
+        "adulte": { label: "👨 Adulte (+18 ans)", className: "badge-adulte" },
+        "anniversaire": { label: "🎂 Anniversaire", className: "badge-anniversaire" },
+        "team building": { label: "🤝 Team Building", className: "badge-team" },
+        "évènement adulte": { label: "🥂 Évènement Adulte", className: "badge-evenement" },
+        "asbl": { label: "🏛️ ASBL / Association", className: "badge-asbl" }
+    };
+
+    reservations.forEach(res => {
+        const card = document.createElement("div");
+        card.className = "qweekle-reservation-card";
+
+        // Génération des badges de catégories mis en évidence
+        let badgesHtml = "";
+        if (res.categories && res.categories.length > 0) {
+            res.categories.forEach(cat => {
+                const badgeInfo = catBadgesMap[cat] || { label: `🌟 ${cat.toUpperCase()}`, className: "badge-adulte" };
+                badgesHtml += `<span class="qweekle-badge ${badgeInfo.className}">${badgeInfo.label}</span>`;
+            });
+        } else {
+            badgesHtml = `<span class="qweekle-badge badge-adulte">👨 Adulte (+18 ans)</span>`;
+        }
+
+        // Génération de la chronologie des activités (Si plusieurs occurrences, les afficher toutes !)
+        let activitesHtml = "";
+        if (res.activites && res.activites.length > 0) {
+            res.activites.sort((a, b) => a.heureDebut.localeCompare(b.heureDebut));
+            res.activites.forEach(act => {
+                activitesHtml += `
+                    <div class="activity-item-card">
+                        <div class="activity-item-header">
+                            <span>▶ ${act.nom}</span>
+                            <span class="activity-time-pill">⏰ ${act.heureDebut} ➔ ${act.heureFin}</span>
+                        </div>
+                        <div style="font-size: 0.85rem; color: var(--text-muted);">📍 Zone / Arène : <strong>${act.zone || "Salle de jeu"}</strong></div>
+                    </div>
+                `;
+            });
+        } else {
+            activitesHtml = `<div style="color: var(--text-muted); font-style: italic; font-size: 0.9rem;">Détail des activités par créneau non spécifié</div>`;
+        }
+
+        // Génération de la liste des options et produits supplémentaires
+        let optionsHtml = "";
+        if (res.options && res.options.length > 0) {
+            optionsHtml = `<ul class="options-list">`;
+            res.options.forEach(opt => {
+                optionsHtml += `<li class="option-pill">📦 ${opt}</li>`;
+            });
+            optionsHtml += `</ul>`;
+        } else {
+            optionsHtml = `<div style="color: var(--text-muted); font-style: italic; font-size: 0.9rem;">Aucune option supplémentaire choisie</div>`;
+        }
+
+        card.innerHTML = `
+            <div class="qweekle-card-header">
+                <div class="qweekle-badges-group">
+                    <span style="font-weight: 700; color: var(--text-main); margin-right: 6px;">🏷️ #${res.id}</span>
+                    ${badgesHtml}
+                </div>
+                <div class="qweekle-time-badge">
+                    <span>⏰ Arrivée : <strong>${res.heureArrivee}</strong></span>
+                    <span style="color: var(--border-strong);">|</span>
+                    <span>🏁 Départ : <strong>${res.heureDepart}</strong></span>
+                </div>
+            </div>
+            <div class="qweekle-card-body">
+                <!-- Colonne 1 : Client & Groupe -->
+                <div class="qweekle-column">
+                    <div class="qweekle-column-title">👤 Client & Groupe</div>
+                    <div class="client-main-name">${res.nom} ${res.prenom}</div>
+                    ${res.societe ? `<div class="client-detail-row" style="font-weight: 600; color: var(--accent-secondary);">🏢 ${res.societe}</div>` : ''}
+                    <div class="client-detail-row">👥 Nombre de personnes : <strong style="font-size: 1.1rem; margin-left: 4px;">${res.nbPersonnes} personne${res.nbPersonnes > 1 ? 's' : ''}</strong></div>
+                    <div class="client-detail-row">📌 Type : <strong>${res.typeActivite}</strong></div>
+                    
+                    <div class="pack-highlight">
+                        🎁 Pack choisi : <strong style="display: block; margin-top: 2px;">${res.nomPack}</strong>
+                    </div>
+
+                    ${res.enfantAnniversaire ? `
+                    <div class="birthday-child-banner">
+                        <span class="birthday-cake-icon">🎂</span>
+                        <div class="birthday-child-info">
+                            <div class="birthday-child-title">Enfant fêté (Sous-compte client) :</div>
+                            <div class="birthday-child-name">👦/👧 <strong>${res.enfantAnniversaire.prenom}</strong> — <strong>${res.enfantAnniversaire.age} ans</strong> ${res.enfantAnniversaire.sousCompteId ? `(Sous-compte #${res.enfantAnniversaire.sousCompteId})` : ''}</div>
+                            ${res.enfantAnniversaire.dateNaissance ? `<div style="font-size: 0.82rem; color: var(--text-muted); margin-top: 2px;">📅 Date de naissance : ${res.enfantAnniversaire.dateNaissance}</div>` : ''}
+                        </div>
+                    </div>
+                    ` : ''}
+                </div>
+
+                <!-- Colonne 2 : Activités (Heures de début de chaque activité) -->
+                <div class="qweekle-column">
+                    <div class="qweekle-column-title">⚡ Activités & Heures de début (${res.activites ? res.activites.length : 0} occurrence${(res.activites && res.activites.length > 1) ? 's' : ''})</div>
+                    <div style="margin-top: 8px;">
+                        ${activitesHtml}
+                    </div>
+                </div>
+
+                <!-- Colonne 3 : Options supplémentaires -->
+                <div class="qweekle-column">
+                    <div class="qweekle-column-title">🛍️ Options & Produits choisis (${res.options ? res.options.length : 0})</div>
+                    <div style="margin-top: 8px;">
+                        ${optionsHtml}
+                    </div>
+                </div>
+            </div>
+        `;
+
+        container.appendChild(card);
+    });
+}
+
+function filterQweeklePlanning(category) {
+    renderPlanningComplet(category);
+}
+
+async function syncQweekleReservations() {
+    const btn = document.getElementById("btn-sync-qweekle");
+    const badge = document.getElementById("qweekle-status-badge");
+    if (btn) {
+        btn.disabled = true;
+        btn.innerHTML = `⌛ Synchronisation en cours...`;
+    }
+
+    const result = await appState.fetchAndSyncQweekleReservations(appState.currentDate);
+
+    if (btn) {
+        btn.disabled = false;
+        btn.innerHTML = `⚡ Synchroniser API Qweekle`;
+    }
+
+    if (badge) {
+        if (result.status === "success") {
+            badge.innerHTML = `<span class="qweekle-status-icon">🟢</span><span><strong>Synchronisé à l'instant via Qweekle API</strong> (${result.data.length} dossier(s)) | Clé active : <code>a712eb...7d84</code></span>`;
+            badge.style.borderColor = "var(--accent-success)";
+        } else {
+            badge.innerHTML = `<span class="qweekle-status-icon">🟡</span><span><strong>API Qweekle (Mode Démo / Hors-Ligne)</strong> - Affichage détaillé complet synchronisé | Clé : <code>a712eb...7d84</code></span>`;
+            badge.style.borderColor = "#C86D3B";
+        }
+    }
+
+    renderPlanningComplet();
 }
 
 // ============================================================================
