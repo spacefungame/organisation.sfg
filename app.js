@@ -313,39 +313,25 @@ function renderHomeDashboard() {
     if (!listEl) return;
 
     const events = appState.getEventsForDate(appState.currentDate);
-    countEl.textContent = `${events.length} activité${events.length > 1 ? 's' : ''}`;
+    const totalCount = events.length;
+    const anniversaireCount = events.filter(ev => ev.type === "anniversaire").length;
 
-    if (events.length === 0) {
-        listEl.innerHTML = `
-            <div style="text-align: center; padding: 40px 20px; color: var(--text-muted); background: var(--bg-main); border: 2px dashed var(--border-color); border-radius: var(--radius-md);">
-                <p style="font-size: 1.1rem; font-weight: 600; margin-bottom: 8px;">Aucune réservation pour cette journée</p>
-                <p style="font-size: 0.95rem;">Cliquez sur <strong>+ Nouvelle Réservation</strong> ou sélectionnez un des plannings ci-dessous pour ajouter une activité.</p>
-            </div>
-        `;
-        return;
+    if (countEl) {
+        countEl.style.display = "none"; // Masqué car affiché dans les encarts ci-dessous
     }
 
-    listEl.innerHTML = "";
-    events.forEach(ev => {
-        const actInfo = CONFIG.ACTIVITIES[ev.type] || CONFIG.ACTIVITIES.autre;
-        const card = document.createElement("div");
-        card.className = "activity-card";
-        card.style.borderLeftColor = actInfo.colorBorder;
-        card.style.backgroundColor = actInfo.colorBg;
-
-        card.innerHTML = `
-            <div class="activity-info">
-                <span class="activity-badge" style="background: var(--bg-card); border-color: ${actInfo.colorBorder}; color: ${actInfo.colorText}; font-size: 0.8rem;">${actInfo.label}</span>
-                <h4 style="margin-top: 6px; color: ${actInfo.colorText};">${ev.title}</h4>
-                <p style="color: var(--text-main); font-weight: 500;">⏱ ${ev.startHour} - ${ev.endHour} ${ev.court ? `| 📍 <strong>${ev.court}</strong>` : ''}</p>
-                ${ev.notes ? `<p style="margin-top: 4px; font-size: 0.85rem; color: var(--text-muted);">💬 ${ev.notes}</p>` : ''}
+    listEl.innerHTML = `
+        <div style="display: grid; grid-template-columns: repeat(auto-fit, minmax(220px, 1fr)); gap: 20px; margin-top: 10px;">
+            <div style="background: var(--bg-main); border: 2px solid var(--border-color); border-radius: var(--radius-md); padding: 24px; text-align: center; box-shadow: var(--shadow-sm);">
+                <div style="font-size: 3rem; font-weight: 700; color: var(--text-main); line-height: 1.2;">${totalCount}</div>
+                <div style="font-size: 1.05rem; font-weight: 600; color: var(--text-muted); margin-top: 8px;">Réservation${totalCount > 1 ? 's' : ''} au total</div>
             </div>
-            <div>
-                <button class="btn-action" onclick="deleteEventItem(${ev.id})" title="Supprimer">🗑️</button>
+            <div style="background: #FDF0D5; border: 2px solid #D4A373; border-radius: var(--radius-md); padding: 24px; text-align: center; box-shadow: var(--shadow-sm);">
+                <div style="font-size: 3rem; font-weight: 700; color: #5E3A1C; line-height: 1.2;">${anniversaireCount}</div>
+                <div style="font-size: 1.05rem; font-weight: 600; color: #5E3A1C; margin-top: 8px;">Réservation${anniversaireCount > 1 ? 's' : ''} Anniversaire${anniversaireCount > 1 ? 's' : ''}</div>
             </div>
-        `;
-        listEl.appendChild(card);
-    });
+        </div>
+    `;
 }
 
 // ============================================================================
