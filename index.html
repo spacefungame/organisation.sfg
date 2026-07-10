@@ -1,0 +1,356 @@
+<!DOCTYPE html>
+<html lang="fr">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>Organisation Space Fun Games - Accès Sécurisé</title>
+    <link rel="stylesheet" href="style.css">
+</head>
+<body>
+
+    <!-- ==========================================================================
+         1. MODAL D'AUTHENTIFICATION (ACCÈS SÉCURISÉ PAR MOT DE PASSE)
+         ========================================================================== -->
+    <div id="login-modal">
+        <div class="login-card">
+            <div class="login-logo">🪐</div>
+            <h1>Organisation Space Fun Games</h1>
+            <p>Espace de gestion interne sécurisé</p>
+            
+            <form id="login-form" class="login-form" onsubmit="return false;">
+                <input type="password" id="password-input" class="login-input" placeholder="Mot de passe..." autocomplete="current-password" autofocus required>
+                <button type="submit" id="btn-login" class="btn-primary">Accéder aux Plannings</button>
+                <div id="login-error" class="login-error"></div>
+            </form>
+        </div>
+    </div>
+
+    <!-- ==========================================================================
+         2. EN-TÊTE ET BARRE DE NAVIGATION MULTI-PAGES
+         ========================================================================== -->
+    <header id="app-header">
+        <div class="header-top">
+            <div class="brand-title">
+                <span>🪐 Organisation Space Fun Games</span>
+            </div>
+
+            <!-- Sélecteur Central de Date -->
+            <div class="header-date-selector">
+                <button type="button" id="date-prev-btn" class="date-nav-btn" title="Jour précédent">◀</button>
+                <button type="button" id="date-today-btn" class="date-nav-btn" title="Retour à aujourd'hui">Aujourd'hui</button>
+                <div class="date-display-badge">
+                    <span>📅</span>
+                    <span id="header-date-text">Chargement...</span>
+                    <input type="date" id="header-date-input" class="header-date-input" title="Changer de date">
+                </div>
+                <button type="button" id="date-next-btn" class="date-nav-btn" title="Jour suivant">▶</button>
+            </div>
+
+            <button type="button" id="btn-logout" class="btn-logout">🔒 Verrouiller la session</button>
+        </div>
+
+        <!-- Onglets des pages -->
+        <nav class="nav-tabs">
+            <button type="button" class="nav-tab active" data-tab="home">📅 Accueil / Calendrier</button>
+            <button type="button" class="nav-tab" data-tab="complet">📋 Planning Complet</button>
+            <button type="button" class="nav-tab" data-tab="anniversaire">🎂 Planning Anniversaire</button>
+            <button type="button" class="nav-tab" data-tab="laser">🔫 Planning Laser Game</button>
+            <button type="button" class="nav-tab" data-tab="team">🤝 Planning Team Game</button>
+            <button type="button" class="nav-tab" data-tab="quiz">🧠 Planning Quiz Game</button>
+            <button type="button" class="nav-tab" data-tab="postit">📌 Post It</button>
+        </nav>
+    </header>
+
+    <!-- ==========================================================================
+         3. CONTENEUR PRINCIPAL DES 7 VUES DU SITE
+         ========================================================================== -->
+    <main id="app-content">
+
+        <!-- VUE 1 : ACCUEIL / CALENDRIER -->
+        <section id="view-home" class="view-section active">
+            <div class="view-header">
+                <div>
+                    <h2>📅 Accueil & Calendrier Central</h2>
+                    <p class="view-subtitle">Sélectionnez la date sur le calendrier pour ouvrir directement tous les plannings synchronisés.</p>
+                </div>
+                <button type="button" class="btn-add" onclick="openEventModal()">+ Nouvelle Réservation</button>
+            </div>
+
+            <div class="home-grid">
+                <!-- Calendrier Interactif -->
+                <div class="calendar-box">
+                    <div class="calendar-header">
+                        <button type="button" id="cal-prev-month" class="date-nav-btn">◀ Mois préc.</button>
+                        <h3 id="cal-month-year">Mois Année</h3>
+                        <button type="button" id="cal-next-month" class="date-nav-btn">Mois suiv. ▶</button>
+                    </div>
+                    <div class="calendar-grid-days">
+                        <div>Lun</div><div>Mar</div><div>Mer</div><div>Jeu</div><div>Ven</div><div>Sam</div><div>Dim</div>
+                    </div>
+                    <div id="calendar-dates-grid" class="calendar-grid-dates"></div>
+                </div>
+
+                <!-- Résumé et Accès Rapide pour la Date Sélectionnée -->
+                <div class="home-dashboard-box">
+                    <div class="home-dashboard-header">
+                        <h3 id="dashboard-date-title">Synthèse de la journée</h3>
+                        <span id="dashboard-event-count" class="activity-badge" style="background: var(--bg-secondary); color: var(--text-main);">0 activité</span>
+                    </div>
+
+                    <div id="dashboard-summary-list">
+                        <!-- Liste dynamique des activités de la journée choisie -->
+                    </div>
+
+                    <h4 style="margin-top: 28px; margin-bottom: 12px; color: var(--text-muted);">Accès rapide aux plannings du jour :</h4>
+                    <div class="quick-links-grid">
+                        <div class="quick-link-card" onclick="switchTab('complet')">
+                            <span class="quick-link-icon">📋</span>
+                            <span>Voir le Planning Complet</span>
+                        </div>
+                        <div class="quick-link-card" onclick="switchTab('anniversaire')">
+                            <span class="quick-link-icon">🎂</span>
+                            <span>Gérer les Anniversaires</span>
+                        </div>
+                        <div class="quick-link-card" onclick="switchTab('laser')">
+                            <span class="quick-link-icon">🔫</span>
+                            <span>Sessions Laser Game</span>
+                        </div>
+                        <div class="quick-link-card" onclick="switchTab('team')">
+                            <span class="quick-link-icon">🤝</span>
+                            <span>Sessions Team Game</span>
+                        </div>
+                        <div class="quick-link-card" onclick="switchTab('quiz')">
+                            <span class="quick-link-icon">🧠</span>
+                            <span>Sessions Quiz Game</span>
+                        </div>
+                        <div class="quick-link-card" onclick="switchTab('postit')">
+                            <span class="quick-link-icon">📌</span>
+                            <span>Consulter les Post-It</span>
+                        </div>
+                    </div>
+                </div>
+            </div>
+        </section>
+
+        <!-- VUE 2 : PLANNING COMPLET -->
+        <section id="view-complet" class="view-section">
+            <div class="view-header">
+                <div>
+                    <h2>📋 Planning Complet</h2>
+                    <p class="view-subtitle" id="subtitle-complet">Affichage de toutes les activités de la journée</p>
+                </div>
+                <button type="button" class="btn-add" onclick="openEventModal()">+ Ajouter une activité</button>
+            </div>
+            <div class="classic-planning-container">
+                <table class="planning-table" id="table-complet">
+                    <thead>
+                        <tr>
+                            <th class="time-col">Horaire</th>
+                            <th>Activités & Réservations (Toutes zones)</th>
+                        </tr>
+                    </thead>
+                    <tbody id="tbody-complet"></tbody>
+                </table>
+            </div>
+        </section>
+
+        <!-- VUE 3 : PLANNING ANNIVERSAIRE -->
+        <section id="view-anniversaire" class="view-section">
+            <div class="view-header">
+                <div>
+                    <h2>🎂 Planning Anniversaire</h2>
+                    <p class="view-subtitle" id="subtitle-anniversaire">Organisation des anniversaires, salles et formules</p>
+                </div>
+                <button type="button" class="btn-add" onclick="openEventModal('anniversaire')">+ Ajouter un Anniversaire</button>
+            </div>
+            <div class="classic-planning-container">
+                <table class="planning-table" id="table-anniversaire">
+                    <thead>
+                        <tr>
+                            <th class="time-col">Horaire</th>
+                            <th>Réservations Anniversaires (Salles, Gâteaux, Accompagnateurs)</th>
+                        </tr>
+                    </thead>
+                    <tbody id="tbody-anniversaire"></tbody>
+                </table>
+            </div>
+        </section>
+
+        <!-- VUE 4 : PLANNING LASER GAME -->
+        <section id="view-laser" class="view-section">
+            <div class="view-header">
+                <div>
+                    <h2>🔫 Planning Laser Game</h2>
+                    <p class="view-subtitle" id="subtitle-laser">Sessions et départs dans l'arène Laser Game</p>
+                </div>
+                <button type="button" class="btn-add" onclick="openEventModal('laser')">+ Ajouter une session Laser Game</button>
+            </div>
+            <div class="classic-planning-container">
+                <table class="planning-table" id="table-laser">
+                    <thead>
+                        <tr>
+                            <th class="time-col">Horaire</th>
+                            <th>Sessions Laser Game (Equipements, Groupes, Arène)</th>
+                        </tr>
+                    </thead>
+                    <tbody id="tbody-laser"></tbody>
+                </table>
+            </div>
+        </section>
+
+        <!-- VUE 5 : PLANNING TEAM GAME -->
+        <section id="view-team" class="view-section">
+            <div class="view-header">
+                <div>
+                    <h2>🤝 Planning Team Game</h2>
+                    <p class="view-subtitle" id="subtitle-team">Défis d'équipe, Team Building et challenges collaborateurs</p>
+                </div>
+                <button type="button" class="btn-add" onclick="openEventModal('team')">+ Ajouter un Team Game</button>
+            </div>
+            <div class="classic-planning-container">
+                <table class="planning-table" id="table-team">
+                    <thead>
+                        <tr>
+                            <th class="time-col">Horaire</th>
+                            <th>Sessions Team Game (Missions, Scoreurs, Salles)</th>
+                        </tr>
+                    </thead>
+                    <tbody id="tbody-team"></tbody>
+                </table>
+            </div>
+        </section>
+
+        <!-- VUE 6 : PLANNING QUIZ GAME -->
+        <section id="view-quiz" class="view-section">
+            <div class="view-header">
+                <div>
+                    <h2>🧠 Planning Quiz Game</h2>
+                    <p class="view-subtitle" id="subtitle-quiz">Émissions sur plateau type plateau TV & buzzers</p>
+                </div>
+                <button type="button" class="btn-add" onclick="openEventModal('quiz')">+ Ajouter un Quiz Game</button>
+            </div>
+            <div class="classic-planning-container">
+                <table class="planning-table" id="table-quiz">
+                    <thead>
+                        <tr>
+                            <th class="time-col">Horaire</th>
+                            <th>Sessions Quiz Game (Thèmes, Pupitres, Groupes)</th>
+                        </tr>
+                    </thead>
+                    <tbody id="tbody-quiz"></tbody>
+                </table>
+            </div>
+        </section>
+
+        <!-- VUE 7 : POST IT -->
+        <section id="view-postit" class="view-section">
+            <div class="view-header">
+                <div>
+                    <h2>📌 Post It - Tableau de Mémos & Notes</h2>
+                    <p class="view-subtitle">Consultez et ajoutez des consignes rapides pour l'équipe (notes générales ou liées à la date)</p>
+                </div>
+                <button type="button" class="btn-add" onclick="openPostItModal()">+ Nouveau Post-It</button>
+            </div>
+
+            <h3 style="margin-top: 20px; color: var(--text-main); font-size: 1.25rem;">📌 Notes pour la date sélectionnée (<span id="postit-date-label"></span>)</h3>
+            <div id="postits-date-container" class="postits-grid"></div>
+
+            <h3 style="margin-top: 36px; color: var(--text-main); font-size: 1.25rem;">📌 Consignes Générales du Centre (Permanentes)</h3>
+            <div id="postits-general-container" class="postits-grid"></div>
+        </section>
+
+    </main>
+
+    <!-- ==========================================================================
+         4. FENÊTRE MODALE : AJOUT / MODIFICATION D'UNE ACTIVITÉ DANS LE PLANNING
+         ========================================================================== -->
+    <div id="event-modal" class="modal-overlay">
+        <div class="modal-box">
+            <h3 id="modal-event-title">Ajouter une réservation</h3>
+            <form id="form-event" onsubmit="return false;">
+                <div class="form-group">
+                    <label for="event-type">Type d'activité :</label>
+                    <select id="event-type" class="form-select" required>
+                        <option value="anniversaire">🎂 Anniversaire</option>
+                        <option value="laser">🔫 Laser Game</option>
+                        <option value="team">🤝 Team Game</option>
+                        <option value="quiz">🧠 Quiz Game</option>
+                        <option value="autre">⚙️ Divers / Maintenance</option>
+                    </select>
+                </div>
+                <div class="form-group">
+                    <label for="event-title">Titre / Nom du groupe ou enfant :</label>
+                    <input type="text" id="event-title" class="form-input" placeholder="Ex: Anniversaire Emma (12 ans) / Groupe Alpha" required>
+                </div>
+                <div style="display: flex; gap: 12px;">
+                    <div class="form-group" style="flex: 1;">
+                        <label for="event-start">Heure de début :</label>
+                        <select id="event-start" class="form-select"></select>
+                    </div>
+                    <div class="form-group" style="flex: 1;">
+                        <label for="event-end">Heure de fin :</label>
+                        <select id="event-end" class="form-select"></select>
+                    </div>
+                </div>
+                <div class="form-group">
+                    <label for="event-court">Salle / Zone :</label>
+                    <input type="text" id="event-court" class="form-input" placeholder="Ex: Salle 1, Arène Laser, Plateau Quiz A...">
+                </div>
+                <div class="form-group">
+                    <label for="event-notes">Notes & Consignes (gâteau, nombre de joueurs, options) :</label>
+                    <textarea id="event-notes" class="form-textarea" rows="3" placeholder="Précisez ici les options de la réservation..."></textarea>
+                </div>
+                <div class="modal-actions">
+                    <button type="button" class="btn-secondary" onclick="closeModal('event-modal')">Annuler</button>
+                    <button type="submit" id="btn-save-event" class="btn-primary">Enregistrer au Planning</button>
+                </div>
+            </form>
+        </div>
+    </div>
+
+    <!-- ==========================================================================
+         5. FENÊTRE MODALE : AJOUT D'UN POST-IT
+         ========================================================================== -->
+    <div id="postit-modal" class="modal-overlay">
+        <div class="modal-box">
+            <h3>Nouveau Post-It</h3>
+            <form id="form-postit" onsubmit="return false;">
+                <div class="form-group">
+                    <label for="postit-scope">Portée de la note :</label>
+                    <select id="postit-scope" class="form-select" required>
+                        <option value="date">Lier à la date sélectionnée (<span id="postit-modal-date-label"></span>)</option>
+                        <option value="general">Note générale du centre (permanente)</option>
+                    </select>
+                </div>
+                <div class="form-group">
+                    <label for="postit-title">Titre du mémo :</label>
+                    <input type="text" id="postit-title" class="form-input" placeholder="Ex: Consigne boissons / Matériel à préparer" required>
+                </div>
+                <div class="form-group">
+                    <label for="postit-content">Détail de la note :</label>
+                    <textarea id="postit-content" class="form-textarea" rows="4" placeholder="Écrivez le contenu du Post-It ici..." required></textarea>
+                </div>
+                <div class="form-group">
+                    <label for="postit-color">Couleur du Post-It (tons beiges et chauds) :</label>
+                    <select id="postit-color" class="form-select">
+                        <option value="#FDF0D5">💛 Crème / Ambre doux</option>
+                        <option value="#FCE8E6">🧡 Terracotta / Rosé</option>
+                        <option value="#E8F4F8">💙 Saphir / Bleu pastel</option>
+                        <option value="#F3E8FF">💜 Parme doux</option>
+                        <option value="#EAF2E8">💚 Vert amande doux</option>
+                    </select>
+                </div>
+                <div class="modal-actions">
+                    <button type="button" class="btn-secondary" onclick="closeModal('postit-modal')">Annuler</button>
+                    <button type="submit" id="btn-save-postit" class="btn-primary">Créer le Post-It</button>
+                </div>
+            </form>
+        </div>
+    </div>
+
+    <!-- Scripts JavaScript -->
+    <script src="config.js"></script>
+    <script src="state.js"></script>
+    <script src="app.js"></script>
+</body>
+</html>
