@@ -158,11 +158,15 @@ class AppStateManager {
     getQweekleReservationsForDate(dateStr) {
         // 1. Vérifier si des données Qweekle synchronisées ou en cache sont disponibles pour cette date
         const cachedStore = this.hasLocalStorage() ? JSON.parse(localStorage.getItem("SFG_QWEEKLE_STORE") || "{}") : {};
-        if (cachedStore[dateStr] && cachedStore[dateStr].length > 0) {
-            return cachedStore[dateStr];
+        if (cachedStore[dateStr] && Array.isArray(cachedStore[dateStr])) {
+            // Ne pas utiliser un cache démo ancien (Marc Dupont QW-90102) si la base Supabase est active
+            const isDemoCache = cachedStore[dateStr].some(r => r && (r.id === "QW-90102" || r.id === "QW-90145" || r.nom === "DUPONT"));
+            if (!isDemoCache || typeof CONFIG === "undefined" || !CONFIG.SUPABASE_URL) {
+                return cachedStore[dateStr];
+            }
         }
-        // 2. Repli vers les données structurées officielles de la configuration
-        if (typeof CONFIG !== "undefined" && CONFIG.QWEEKLE_RESERVATIONS_DATA && CONFIG.QWEEKLE_RESERVATIONS_DATA[dateStr]) {
+        // 2. Repli vers les données structurées officielles de la configuration uniquement si Supabase n'est pas configuré
+        if (typeof CONFIG !== "undefined" && !CONFIG.SUPABASE_URL && CONFIG.QWEEKLE_RESERVATIONS_DATA && CONFIG.QWEEKLE_RESERVATIONS_DATA[dateStr]) {
             return CONFIG.QWEEKLE_RESERVATIONS_DATA[dateStr];
         }
         return [];
