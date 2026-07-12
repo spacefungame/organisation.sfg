@@ -407,7 +407,7 @@ class AppStateManager {
                     enfantAnniversaire = {
                         prenom: bestChild.firstname || bestChild.prenom || bestChild.name || bestChild.lastname || "???",
                         age: age && !isNaN(Number(age)) ? Number(age) : (age || "???"),
-                        dateNaissance: bestChild.birthday_at || bestChild.birthdate || null,
+                        dateNaissance: (bestChild.birthday_at || bestChild.birthdate || "").split("T")[0] || null,
                         sousCompteId: bestChild.id || null
                     };
                 } else {
@@ -937,7 +937,7 @@ class AppStateManager {
             return {
                 prenom: sc.firstname || sc.prenom || sc.name || "???",
                 age: age && !isNaN(Number(age)) ? Number(age) : (age || "???"),
-                dateNaissance: sc.birthdate || sc.date_naissance || null,
+                dateNaissance: (sc.birthdate || sc.date_naissance || "").split("T")[0] || null,
                 sousCompteId: sc.id || sc.client_id || sc.sub_client_id || null
             };
         }
@@ -956,7 +956,7 @@ class AppStateManager {
                 return {
                     prenom: firstChild.firstname || firstChild.prenom || firstChild.name || "???",
                     age: age && !isNaN(Number(age)) ? Number(age) : (age || "???"),
-                    dateNaissance: firstChild.birthdate || firstChild.date_naissance || null,
+                    dateNaissance: (firstChild.birthdate || firstChild.date_naissance || "").split("T")[0] || null,
                     sousCompteId: firstChild.id || firstChild.client_id || null
                 };
             }

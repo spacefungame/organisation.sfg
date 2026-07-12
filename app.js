@@ -578,6 +578,16 @@ function renderPlanningComplet(filterCategory = currentQweekleCategoryFilter) {
                             aDisplay = a;
                         }
                         const isUnknown = p === "???" || aDisplay === "???";
+                        let dateDisplay = "";
+                        if (ea.dateNaissance) {
+                            const cleanDate = String(ea.dateNaissance).split("T")[0].trim();
+                            const parts = cleanDate.split("-");
+                            if (parts.length === 3) {
+                                dateDisplay = `${parts[2]}/${parts[1]}/${parts[0]}`;
+                            } else {
+                                dateDisplay = cleanDate;
+                            }
+                        }
                         return `
                         <div class="birthday-child-banner" style="padding: 5px 8px; margin: 5px 0 2px 0; gap: 6px; background: ${isUnknown ? 'rgba(239, 68, 68, 0.08)' : 'rgba(255, 152, 0, 0.12)'}; border: 1px solid ${isUnknown ? 'rgba(239, 68, 68, 0.35)' : 'rgba(255, 152, 0, 0.35)'}; border-radius: 6px; display: flex; align-items: center;">
                             <span class="birthday-cake-icon" style="width: 26px; height: 26px; font-size: 1.15rem; display: flex; align-items: center; justify-content: center;">🎂</span>
@@ -588,7 +598,7 @@ function renderPlanningComplet(filterCategory = currentQweekleCategoryFilter) {
                                     <span style="margin: 0 4px; color: var(--border-strong);">|</span>
                                     Âge : <strong style="color: ${aDisplay === '???' ? '#ef4444' : 'var(--text-main)'}">${aDisplay}</strong>
                                 </div>
-                                ${ea.dateNaissance ? `<div style="font-size: 0.72rem; color: var(--text-muted); margin-top: 1px;">📅 ${ea.dateNaissance}</div>` : ''}
+                                ${dateDisplay ? `<div style="font-size: 0.72rem; color: var(--text-muted); margin-top: 1px;">📅 ${dateDisplay}</div>` : ''}
                             </div>
                         </div>`;
                     })() : ''}
