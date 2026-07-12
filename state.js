@@ -960,13 +960,41 @@ class AppStateManager {
     detectQweekleCategories(nom, societe, pack, activity) {
         const fullStr = `${nom} ${societe} ${pack} ${activity}`.toLowerCase();
         const cats = [];
-        if (fullStr.includes("enfant") || fullStr.includes("7-12") || fullStr.includes("junior")) cats.push("enfant");
-        if (fullStr.includes("ado") || fullStr.includes("13-18") || fullStr.includes("teen")) cats.push("ado");
-        if (fullStr.includes("adulte") || fullStr.includes("+18") || fullStr.includes("18+") || fullStr.includes("senior")) cats.push("adulte");
-        if (fullStr.includes("anniversaire") || fullStr.includes("birthday")) cats.push("anniversaire");
-        if (fullStr.includes("team") || fullStr.includes("challenge") || fullStr.includes("entreprise") || fullStr.includes("collaborateur") || fullStr.includes("séminaire")) cats.push("team building");
-        if (fullStr.includes("évènement") || fullStr.includes("evenement") || fullStr.includes("soirée") || fullStr.includes("privé") || fullStr.includes("gala") || fullStr.includes("cocktail")) cats.push("évènement adulte");
-        if (fullStr.includes("asbl") || fullStr.includes("association") || fullStr.includes("école") || fullStr.includes("ecole") || fullStr.includes("centre") || fullStr.includes("jeunesse")) cats.push("asbl");
+        
+        // Enfant: 7-12 ans, enfant, junior
+        if (/\b(enfant|enfants|7-12|junior|juniors)\b/i.test(fullStr)) {
+            cats.push("enfant");
+        }
+        
+        // Ado: 13-18 ans, ado, ados, adolescent, teen (regex \b pour ne pas matcher "mikado")
+        if (/\b(ado|ados|adolescent|adolescents|13-18|teen|teens)\b/i.test(fullStr)) {
+            cats.push("ado");
+        }
+        
+        // Adulte: +18 ans, 18+, adulte, adultes, senior
+        if (/\b(adulte|adultes|\+18|18\+|senior|seniors)\b/i.test(fullStr)) {
+            cats.push("adulte");
+        }
+        
+        // Anniversaire: anniversaire, birthday
+        if (/\b(anniversaire|birthday)\b/i.test(fullStr)) {
+            cats.push("anniversaire");
+        }
+        
+        // Team building: team building (strict pour ne pas matcher "team games"), entreprise, séminaire, challenge entreprise
+        if (/\b(team\s+building|séminaire|séminaires|entreprise|entreprises|collaborateur|collaborateurs|teambuilding)\b/i.test(fullStr)) {
+            cats.push("team building");
+        }
+        
+        // Évènement adulte: évènement, soirée privée, gala, cocktail
+        if (/\b(évènement|evenement|soirée\s+privée|gala|cocktail)\b/i.test(fullStr)) {
+            cats.push("évènement adulte");
+        }
+        
+        // ASBL / Association: asbl, association, école, ecole, centre de jeunesse, centre de loisirs, maison de jeunes, mj
+        if (/\b(asbl|association|école|ecole|centre\s+de\s+jeunesse|centre\s+de\s+loisirs|maison\s+de\s+jeunes|mj)\b/i.test(fullStr)) {
+            cats.push("asbl");
+        }
         
         if (cats.length === 0) {
             cats.push("adulte"); // Par défaut si non spécifié
