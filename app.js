@@ -125,6 +125,7 @@ function initNavigation() {
 
 function switchTab(tabId) {
     currentActiveTab = tabId;
+    appState.currentTab = (tabId === "complet") ? "planning-complet" : tabId;
 
     // Mise à jour des boutons
     document.querySelectorAll(".nav-tab").forEach(btn => {
@@ -617,8 +618,8 @@ async function syncQweekleReservations(silent = false) {
         }
     }
 
-    // Ré-afficher uniquement si nous sommes sur l'onglet planning complet ou si la synchro n'était pas un simple check arrière-plan qui a déjà un affichage en cours
-    if (appState.currentTab === "planning-complet") {
+    // Ré-afficher dès que la synchro Qweekle/Supabase est terminée si nous sommes sur l'onglet planning complet
+    if (currentActiveTab === "complet" || appState.currentTab === "planning-complet") {
         renderPlanningComplet();
     }
 }
