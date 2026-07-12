@@ -972,7 +972,8 @@ function openPostItModal() {
 }
 
 function closeModal(modalId) {
-    document.getElementById("modalId" || modalId).style.display = "none";
+    const el = document.getElementById(modalId);
+    if (el) el.style.display = "none";
 }
 
 // Global functions accessible from HTML onClick attributes
@@ -1066,7 +1067,8 @@ let importedExcelFilename = "";
 
 function openErrorReportModal() {
     resetErrorReportImport();
-    openModal('error-report-modal');
+    const modal = document.getElementById('error-report-modal');
+    if (modal) modal.style.display = 'flex';
 }
 
 function resetErrorReportImport() {
