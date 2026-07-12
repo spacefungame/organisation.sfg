@@ -1279,39 +1279,7 @@ async function runErrorReportAudit() {
             return;
         }
 
-        if (matchBooking) {
-            const siteQty = Number(matchBooking.nbPersonnes) || 0;
-            if (totalQty > 0 && Math.abs(totalQty - siteQty) > 2) {
-                auditResults.push({
-                    dateStr,
-                    clientName,
-                    type: "⚠️ Écart de nombre de participants",
-                    badgeClass: "badge-err-qty",
-                    detailQweekle: activitiesText,
-                    detailSite: `Enregistré avec <strong>${siteQty} personne(s)</strong> (Arrivée : ${matchBooking.heureArrivee})`,
-                    action: "Vérifier l'effectif exact"
-                });
-                countQty++;
-                return;
-            }
-
-            const firstExcelTime = activities[0]?.timeStr;
-            if (firstExcelTime && matchBooking.heureArrivee && Math.abs(parseInt(firstExcelTime) - parseInt(matchBooking.heureArrivee)) >= 2) {
-                auditResults.push({
-                    dateStr,
-                    clientName,
-                    type: "⏱️ Écart d'horaire d'arrivée",
-                    badgeClass: "badge-err-time",
-                    detailQweekle: activitiesText,
-                    detailSite: `Heure d'arrivée sur le site : <strong>${matchBooking.heureArrivee}</strong> (Fin : ${matchBooking.heureDepart})`,
-                    action: "Vérifier l'heure de début"
-                });
-                countTime++;
-                return;
-            }
-
-            countOk++;
-        } else if (matchEvent) {
+        if (matchBooking || matchEvent) {
             countOk++;
         }
     });
@@ -1369,10 +1337,8 @@ async function runErrorReportAudit() {
         }
     }
 
-    document.getElementById('badge-err-missing').textContent = countMissing;
-    document.getElementById('badge-err-qty').textContent = countQty;
-    document.getElementById('badge-err-time').textContent = countTime;
-    document.getElementById('badge-err-ok').textContent = countOk;
+    if (document.getElementById('badge-err-missing')) document.getElementById('badge-err-missing').textContent = countMissing;
+    if (document.getElementById('badge-err-ok')) document.getElementById('badge-err-ok').textContent = countOk;
 
     const nowStr = new Date().toLocaleDateString('fr-FR', { day: '2-digit', month: '2-digit', year: 'numeric', hour: '2-digit', minute: '2-digit' });
     if (document.getElementById('report-print-date')) document.getElementById('report-print-date').textContent = nowStr;
