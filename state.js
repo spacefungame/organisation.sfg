@@ -322,9 +322,39 @@ class AppStateManager {
                 };
             });
 
-            // 5. Nom du pack
-            const mainActs = group.filter(a => !(a.label || "").toLowerCase().includes("accueil") && !(a.label || "").toLowerCase().includes("table réservée"));
-            const nomPack = mainActs.length > 0 ? mainActs.map(a => a.label).join(" + ") : (group.map(a => a.label).join(" + ") || "Réservation Qweekle");
+            // 5. Nom du pack (en priorité depuis le titre exact de commande/produit dans Qweekle, sinon calculé depuis les activités)
+            let nomPack = "";
+            const orderPacks = new Set();
+            group.forEach(act => {
+                const rp = act.raw_payload || {};
+                const oLabel = rp.order?.label || rp.order?.product_label || rp.order?.name || rp.order_item?.label || rp.product?.label || rp.pack_label || rp.activity?.product_label || rp.booking?.label || act.pack_label || act.product_label;
+                if (oLabel && typeof oLabel === 'string' && oLabel.trim()) {
+                    orderPacks.add(oLabel.trim());
+                }
+            });
+            if (orderPacks.size > 0) {
+                nomPack = Array.from(orderPacks).join(" + ");
+            } else {
+                const mainActs = group.filter(a => !(a.label || "").toLowerCase().includes("accueil") && !(a.label || "").toLowerCase().includes("table réservée"));
+                if (mainActs.length > 0) {
+                    const laserActs = mainActs.filter(a => (a.label || "").toLowerCase().includes("laser"));
+                    if (laserActs.length > 0) {
+                        const totalMin = laserActs.reduce((sum, a) => sum + (Number(a.duration) || 20), 0);
+                        const firstLabel = laserActs[0].label || "";
+                        if (firstLabel.toLowerCase().includes("7-12") || firstLabel.toLowerCase().includes("enfant")) {
+                            nomPack = `${totalMin} Min Laser Games | Enfant 7-12ans`;
+                        } else if (firstLabel.toLowerCase().includes("adulte") || firstLabel.toLowerCase().includes("+18")) {
+                            nomPack = `${totalMin} Min Laser Games | Adulte +18ans`;
+                        } else {
+                            nomPack = `${totalMin} Min Laser Games`;
+                        }
+                    } else {
+                        nomPack = mainActs.map(a => a.label).join(" + ");
+                    }
+                } else {
+                    nomPack = group.map(a => a.label).join(" + ") || "Réservation Qweekle";
+                }
+            }
 
             // 6. Catégories détectées
             const allTextForCats = `${nom} ${societe} ${nomPack} ${group.map(a => `${a.label || ''} ${a.category || ''} ${a.subcategory || ''} ${a.raw_payload?.client?.type || ''}`).join(" ")}`;
@@ -518,7 +548,12 @@ class AppStateManager {
                     const cp = p.trim();
                     if (cp && !cp.toLowerCase().includes("accueil")) packSet.add(cp);
                 });
-                match.nomPack = packSet.size > 0 ? Array.from(packSet).join(" + ") : (match.nomPack || booking.nomPack);
+                const sortedPacks = Array.from(packSet).sort((a, b) => {
+                    if (a.toLowerCase().includes("enfant") && !b.toLowerCase().includes("enfant")) return -1;
+                    if (!a.toLowerCase().includes("enfant") && b.toLowerCase().includes("enfant")) return 1;
+                    return b.localeCompare(a);
+                });
+                match.nomPack = sortedPacks.length > 0 ? sortedPacks.join(" + ") : (match.nomPack || booking.nomPack);
 
                 const typeSet = new Set(match.typeActivite ? match.typeActivite.split(" & ").map(t => t.trim()) : []);
                 if (booking.typeActivite) {
@@ -558,7 +593,73 @@ class AppStateManager {
             }
         });
 
+        // Regrouper les activités simultanées (ex: adultes et enfants jouant ensemble sur le même créneau)
+        merged.forEach(item => {
+            item.activites = this.groupSimultaneousActivities(item.activites);
+        });
+
         return merged;
+    }
+
+    groupSimultaneousActivities(activites) {
+        if (!activites || !activites.length) return [];
+
+        const groupedMap = new Map();
+
+        activites.forEach(act => {
+            const hDebut = act.heureDebut || "";
+            const hFin = act.heureFin || "";
+            const zone = (act.zone || "Salle de jeu").trim();
+            const key = `${hDebut}_${hFin}_${zone.toLowerCase()}`;
+
+            if (!groupedMap.has(key)) {
+                groupedMap.set(key, {
+                    heureDebut: hDebut,
+                    heureFin: hFin,
+                    zone: zone,
+                    noms: [(act.nom || "").trim()]
+                });
+            } else {
+                const existing = groupedMap.get(key);
+                const cleanNom = (act.nom || "").trim();
+                if (!existing.noms.includes(cleanNom)) {
+                    existing.noms.push(cleanNom);
+                }
+            }
+        });
+
+        const result = [];
+        groupedMap.forEach(item => {
+            let combinedNom = item.noms[0];
+            if (item.noms.length > 1) {
+                // Si plusieurs noms sur le même créneau ex: "20 Min Laser Game | Adulte +18 ans" et "20 Min Laser Game 7-12 ans"
+                const hasAdulte = item.noms.some(n => n.toLowerCase().includes("adulte") || n.toLowerCase().includes("+18"));
+                const hasEnfant = item.noms.some(n => n.toLowerCase().includes("7-12") || n.toLowerCase().includes("enfant"));
+                const hasLaser = item.noms.some(n => n.toLowerCase().includes("laser"));
+
+                if (hasLaser && hasAdulte && hasEnfant) {
+                    combinedNom = "20 Min Laser Game | Adulte & Enfant";
+                } else if (hasLaser && item.noms.length > 1) {
+                    combinedNom = "20 Min Laser Game (" + item.noms.map(n => n.replace(/20 Min Laser Game\s*(\|\s*)?/i, '').trim()).filter(Boolean).join(" & ") + ")";
+                } else {
+                    combinedNom = item.noms.join(" + ");
+                }
+            }
+            result.push({
+                heureDebut: item.heureDebut,
+                heureFin: item.heureFin,
+                zone: item.zone,
+                nom: combinedNom
+            });
+        });
+
+        result.sort((a, b) => {
+            const cmp = (a.heureDebut || "").localeCompare(b.heureDebut || "");
+            if (cmp !== 0) return cmp;
+            return (a.nom || "").localeCompare(b.nom || "");
+        });
+
+        return result;
     }
 
 
