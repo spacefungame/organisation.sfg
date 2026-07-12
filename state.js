@@ -413,9 +413,152 @@ class AppStateManager {
             });
         });
 
-        // Trier les réservations par heure d'arrivée chronologique
+        // Trier les réservations par heure d'arrivée chronologique puis regrouper les doublons (adulte + enfant même heure)
         bookings.sort((a, b) => a.heureArrivee.localeCompare(b.heureArrivee));
-        return bookings;
+        return this.mergeDuplicateClientBookings(bookings);
+    }
+
+    mergeDuplicateClientBookings(list) {
+        if (!list || !list.length) return [];
+
+        // Trier par heure d'arrivée d'abord
+        const sorted = [...list].sort((a, b) => a.heureArrivee.localeCompare(b.heureArrivee));
+        const merged = [];
+
+        sorted.forEach(booking => {
+            const cleanNom = (booking.nom || "CLIENT").trim().toUpperCase();
+            
+            // Chercher si une réservation existante dans merged a le même nom et une heure d'arrivée proche (<= 30 min)
+            let match = null;
+            if (cleanNom !== "CLIENT" && !cleanNom.startsWith("CLIENT (")) {
+                const [bH, bM] = (booking.heureArrivee || "00:00").split(":").map(Number);
+                const bookingMin = bH * 60 + bM;
+
+                for (const existing of merged) {
+                    const existingNom = (existing.nom || "").trim().toUpperCase();
+                    if (existingNom === cleanNom) {
+                        const [eH, eM] = (existing.heureArrivee || "00:00").split(":").map(Number);
+                        const existingMin = eH * 60 + eM;
+                        if (Math.abs(bookingMin - existingMin) <= 30) {
+                            match = existing;
+                            break;
+                        }
+                    }
+                }
+            }
+
+            if (!match) {
+                // Pas de doublon trouvé, on ajoute une copie propre de la réservation
+                merged.push({
+                    ...booking,
+                    categories: Array.isArray(booking.categories) ? [...booking.categories] : [],
+                    activites: Array.isArray(booking.activites) ? booking.activites.map(a => ({ ...a })) : [],
+                    options: Array.isArray(booking.options) ? [...booking.options] : []
+                });
+            } else {
+                // Fusionner avec la réservation existante (match) !
+                // 1. Fusion des IDs
+                const existingIds = match.id.split(" + ");
+                if (!existingIds.includes(booking.id)) {
+                    match.id = `${match.id} + ${booking.id}`;
+                }
+
+                // 2. Fusion des Prénoms
+                const prenomsSet = new Set(match.prenom ? match.prenom.split(" & ").map(p => p.trim()).filter(Boolean) : []);
+                if (booking.prenom) {
+                    booking.prenom.split(" & ").forEach(p => {
+                        const cp = p.trim();
+                        if (cp) prenomsSet.add(cp);
+                    });
+                }
+                match.prenom = Array.from(prenomsSet).join(" & ");
+
+                // 3. Fusion des Sociétés
+                const socSet = new Set(match.societe ? match.societe.split(" / ").map(s => s.trim()).filter(Boolean) : []);
+                if (booking.societe) {
+                    booking.societe.split(" / ").forEach(s => {
+                        const cs = s.trim();
+                        if (cs) socSet.add(cs);
+                    });
+                }
+                match.societe = Array.from(socSet).join(" / ");
+
+                // 4. Heure d'arrivée = le plus tôt, Heure de départ = le plus tard
+                if (booking.heureArrivee < match.heureArrivee) {
+                    match.heureArrivee = booking.heureArrivee;
+                }
+                if (booking.heureDepart > match.heureDepart) {
+                    match.heureDepart = booking.heureDepart;
+                }
+
+                // 5. Somme des personnes
+                match.nbPersonnes = (Number(match.nbPersonnes) || 0) + (Number(booking.nbPersonnes) || 0);
+
+                // 6. Fusion des Catégories (badges ex: enfant + adulte)
+                const catSet = new Set(match.categories || []);
+                if (Array.isArray(booking.categories)) {
+                    booking.categories.forEach(c => catSet.add(c));
+                }
+                match.categories = Array.from(catSet);
+
+                // 7. Fusion des Options
+                const optSet = new Set(match.options || []);
+                if (Array.isArray(booking.options)) {
+                    booking.options.forEach(o => optSet.add(o));
+                }
+                match.options = Array.from(optSet);
+
+                // 8. Fusion du Nom de Pack et Type Activité
+                const packSet = new Set();
+                (match.nomPack || "").split(" + ").forEach(p => {
+                    const cp = p.trim();
+                    if (cp && !cp.toLowerCase().includes("accueil")) packSet.add(cp);
+                });
+                (booking.nomPack || "").split(" + ").forEach(p => {
+                    const cp = p.trim();
+                    if (cp && !cp.toLowerCase().includes("accueil")) packSet.add(cp);
+                });
+                match.nomPack = packSet.size > 0 ? Array.from(packSet).join(" + ") : (match.nomPack || booking.nomPack);
+
+                const typeSet = new Set(match.typeActivite ? match.typeActivite.split(" & ").map(t => t.trim()) : []);
+                if (booking.typeActivite) {
+                    booking.typeActivite.split(" & ").forEach(t => {
+                        const ct = t.trim();
+                        if (ct) typeSet.add(ct);
+                    });
+                }
+                match.typeActivite = Array.from(typeSet).join(" & ");
+
+                // 9. Enfant anniversaire
+                if (!match.enfantAnniversaire && booking.enfantAnniversaire) {
+                    match.enfantAnniversaire = booking.enfantAnniversaire;
+                }
+
+                // 10. Fusion & Dédoublonnage des Activités
+                const existingActs = [...(match.activites || [])];
+                if (Array.isArray(booking.activites)) {
+                    booking.activites.forEach(newAct => {
+                        const isDup = existingActs.some(ea => 
+                            ea.heureDebut === newAct.heureDebut &&
+                            ea.heureFin === newAct.heureFin &&
+                            (ea.nom || "").trim().toLowerCase() === (newAct.nom || "").trim().toLowerCase()
+                        );
+                        if (!isDup) {
+                            existingActs.push({ ...newAct });
+                        }
+                    });
+                }
+                // Tri chronologique des activités après fusion
+                existingActs.sort((a, b) => {
+                    const cmp = (a.heureDebut || "").localeCompare(b.heureDebut || "");
+                    if (cmp !== 0) return cmp;
+                    return (a.nom || "").localeCompare(b.nom || "");
+                });
+                match.activites = existingActs;
+            }
+        });
+
+        return merged;
     }
 
 
@@ -522,7 +665,7 @@ class AppStateManager {
             }
         });
 
-        return Object.values(bookingsMap);
+        return this.mergeDuplicateClientBookings(Object.values(bookingsMap));
     }
 
     extractBirthdayChildInfo(item, categories) {
