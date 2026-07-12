@@ -1317,6 +1317,35 @@ body {
 .badge-err-ok { background: #C6F6D5; color: #22543D; }
 
 /* ==========================================================================
+   SCROLL ET REDIMENSIONNEMENT ÉCRAN : RAPPORT D'ERREUR
+   ========================================================================== */
+#error-report-modal {
+    align-items: center;
+    justify-content: center;
+    padding: 20px 10px;
+    overflow-y: auto;
+}
+
+#error-report-modal .modal-box {
+    max-height: 86vh;
+    overflow-y: auto;
+    margin: auto;
+    display: flex;
+    flex-direction: column;
+    padding: 24px;
+}
+
+#error-report-modal .modal-header-actions {
+    position: sticky;
+    top: -24px;
+    background: var(--bg-card);
+    z-index: 100;
+    padding-top: 6px;
+    margin-top: -6px;
+    border-bottom: 1.5px solid var(--border-color);
+}
+
+/* ==========================================================================
    IMPRESSION A4 STRICTE (RAPPORT D'AUDIT)
    ========================================================================== */
 @media print {
@@ -1339,6 +1368,9 @@ body {
         width: 100% !important;
         margin: 0 !important;
         background: white !important;
+        max-height: none !important;
+        overflow: visible !important;
+        display: block !important;
     }
     #error-report-modal .modal-header-actions,
     #error-report-modal .report-modal-footer-toolbar,
