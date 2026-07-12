@@ -68,21 +68,20 @@
 
         <!-- VUE 1 : ACCUEIL / CALENDRIER -->
         <section id="view-home" class="view-section active">
-            <div class="view-header">
+            <div class="view-header" style="margin-bottom: 12px;">
                 <div>
                     <h2>📅 Accueil & Calendrier Central</h2>
-                    <p class="view-subtitle">Sélectionnez la date sur le calendrier pour ouvrir directement tous les plannings synchronisés.</p>
+                    <p class="view-subtitle">Sélectionnez la date pour afficher la synthèse, les effectifs (réservations & personnes) et vos notes.</p>
                 </div>
-                <button type="button" class="btn-add" onclick="openEventModal()">+ Nouvelle Réservation</button>
             </div>
 
             <div class="home-grid">
-                <!-- Calendrier Interactif -->
+                <!-- Calendrier Interactif Compact -->
                 <div class="calendar-box">
                     <div class="calendar-header">
-                        <button type="button" id="cal-prev-month" class="date-nav-btn">◀ Mois préc.</button>
+                        <button type="button" id="cal-prev-month" class="date-nav-btn" title="Mois précédent">◀ Mois préc.</button>
                         <h3 id="cal-month-year">Mois Année</h3>
-                        <button type="button" id="cal-next-month" class="date-nav-btn">Mois suiv. ▶</button>
+                        <button type="button" id="cal-next-month" class="date-nav-btn" title="Mois suivant">Mois suiv. ▶</button>
                     </div>
                     <div class="calendar-grid-days">
                         <div>Lun</div><div>Mar</div><div>Mer</div><div>Jeu</div><div>Ven</div><div>Sam</div><div>Dim</div>
@@ -90,42 +89,64 @@
                     <div id="calendar-dates-grid" class="calendar-grid-dates"></div>
                 </div>
 
-                <!-- Résumé et Accès Rapide pour la Date Sélectionnée -->
+                <!-- Résumé Compact, Effectifs & Notes Manuelles -->
                 <div class="home-dashboard-box">
                     <div class="home-dashboard-header">
                         <h3 id="dashboard-date-title">Synthèse de la journée</h3>
-                        <span id="dashboard-event-count" class="activity-badge" style="background: var(--bg-secondary); color: var(--text-main);">0 activité</span>
+                        <div style="display: flex; align-items: center; gap: 8px;">
+                            <span id="dashboard-event-count" class="activity-badge" style="background: var(--bg-secondary); color: var(--text-main);">0 activité</span>
+                            <button type="button" id="home-btn-sync" class="btn-sync-small" onclick="syncQweekleReservations()" title="Forcer la synchronisation avec l'API Qweekle">⚡ Sync</button>
+                        </div>
                     </div>
 
+                    <!-- Grille compacte des compteurs de réservations & personnes -->
                     <div id="dashboard-summary-list">
-                        <!-- Liste dynamique des activités de la journée choisie -->
+                        <!-- Liste dynamique injectée par app.js -->
                     </div>
 
-                    <h4 style="margin-top: 28px; margin-bottom: 12px; color: var(--text-muted);">Accès rapide aux plannings du jour :</h4>
+                    <!-- Encart NOTES manuelle compact -->
+                    <div class="home-notes-container" style="margin-top: 14px;">
+                        <div class="home-notes-header">
+                            <div style="display: flex; align-items: center; gap: 6px;">
+                                <span style="font-size: 1.05rem;">📝</span>
+                                <strong style="font-size: 0.9rem; color: var(--text-main);">Notes & Consignes Manuelles</strong>
+                            </div>
+                            <div class="home-notes-tabs">
+                                <button type="button" class="home-note-tab active" data-notetype="date" onclick="switchHomeNoteTab('date')" title="Note spécifique à la date sélectionnée">📅 Jour sélectionné</button>
+                                <button type="button" class="home-note-tab" data-notetype="general" onclick="switchHomeNoteTab('general')" title="Note générale permanente">📌 Note Générale</button>
+                            </div>
+                            <span id="home-note-status" class="home-note-status">✓ Enregistré</span>
+                        </div>
+                        <textarea id="home-manual-note" class="home-notes-textarea" placeholder="Écrivez ici vos notes, consignes ou remarques (s'enregistre instantanément en local)..." oninput="saveHomeManualNote()"></textarea>
+                    </div>
+
+                    <div style="margin-top: 14px; margin-bottom: 6px;">
+                        <h4 style="margin: 0; font-size: 0.8rem; font-weight: 600; color: var(--text-muted); text-transform: uppercase; letter-spacing: 0.4px;">Accès rapide aux plannings :</h4>
+                    </div>
                     <div class="quick-links-grid">
-                        <div class="quick-link-card" onclick="switchTab('complet')">
+                        <div class="quick-link-card" onclick="switchTab('complet')" title="Ouvrir le planning complet synchronisé">
                             <span class="quick-link-icon">📋</span>
-                            <span>Voir le Planning Complet</span>
+                            <span>Complet</span>
                         </div>
-                        <div class="quick-link-card" onclick="switchTab('anniversaire')">
+                        <div class="quick-link-card" onclick="switchTab('anniversaire')" title="Ouvrir le planning Anniversaire">
                             <span class="quick-link-icon">🎂</span>
-                            <span>Gérer les Anniversaires</span>
+                            <span>Anniversaires</span>
                         </div>
-                        <div class="quick-link-card" onclick="switchTab('laser')">
+                        <div class="quick-link-card" onclick="switchTab('laser')" title="Ouvrir le planning Laser Game">
                             <span class="quick-link-icon">🔫</span>
-                            <span>Sessions Laser Game</span>
+                            <span>Laser Game</span>
                         </div>
-                        <div class="quick-link-card" onclick="switchTab('team')">
+                        <div class="quick-link-card" onclick="switchTab('team')" title="Ouvrir le planning Team Game">
                             <span class="quick-link-icon">🤝</span>
-                            <span>Sessions Team Game</span>
+                            <span>Team Game</span>
                         </div>
-                        <div class="quick-link-card" onclick="switchTab('quiz')">
+                        <div class="quick-link-card" onclick="switchTab('quiz')" title="Ouvrir le planning Quiz Game">
                             <span class="quick-link-icon">🧠</span>
-                            <span>Sessions Quiz Game</span>
+                            <span>Quiz Game</span>
                         </div>
-                        <div class="quick-link-card" onclick="switchTab('postit')">
+                        <div class="quick-link-card" onclick="switchTab('postit')" title="Ouvrir l'espace Post-It">
                             <span class="quick-link-icon">📌</span>
-                            <span>Consulter les Post-It</span>
+                            <span>Post-It</span>
                         </div>
                     </div>
                 </div>

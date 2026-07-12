@@ -355,8 +355,8 @@ body {
    ========================================================================== */
 .home-grid {
     display: grid;
-    grid-template-columns: 380px 1fr;
-    gap: 32px;
+    grid-template-columns: 310px 1fr;
+    gap: 16px;
     align-items: start;
 }
 
@@ -369,8 +369,8 @@ body {
 .calendar-box {
     background-color: var(--bg-card);
     border: 2px solid var(--border-color);
-    border-radius: var(--radius-lg);
-    padding: 24px;
+    border-radius: var(--radius-md);
+    padding: 14px;
     box-shadow: var(--shadow-sm);
 }
 
@@ -378,11 +378,11 @@ body {
     display: flex;
     justify-content: space-between;
     align-items: center;
-    margin-bottom: 20px;
+    margin-bottom: 8px;
 }
 
 .calendar-header h3 {
-    font-size: 1.25rem;
+    font-size: 1.05rem;
     color: var(--text-main);
 }
 
@@ -392,28 +392,29 @@ body {
     text-align: center;
     font-weight: 700;
     color: var(--text-muted);
-    font-size: 0.85rem;
-    margin-bottom: 10px;
+    font-size: 0.78rem;
+    margin-bottom: 6px;
 }
 
 .calendar-grid-dates {
     display: grid;
     grid-template-columns: repeat(7, 1fr);
-    gap: 6px;
+    gap: 4px;
 }
 
 .calendar-day-cell {
-    aspect-ratio: 1;
+    height: 34px;
     display: flex;
     flex-direction: column;
     align-items: center;
     justify-content: center;
     background-color: var(--bg-main);
     border: 1px solid var(--border-light);
-    border-radius: var(--radius-sm);
+    border-radius: 4px;
+    font-size: 0.82rem;
     font-weight: 600;
     cursor: pointer;
-    transition: all 0.2s;
+    transition: all 0.15s;
     position: relative;
 }
 
@@ -426,15 +427,15 @@ body {
     background-color: var(--accent-primary);
     color: #FFFFFF;
     border-color: var(--accent-primary);
-    box-shadow: 0 2px 6px rgba(200, 109, 59, 0.3);
+    box-shadow: 0 2px 4px rgba(200, 109, 59, 0.3);
 }
 
 .calendar-day-cell.has-events::after {
     content: "";
     position: absolute;
-    bottom: 4px;
-    width: 6px;
-    height: 6px;
+    bottom: 2px;
+    width: 5px;
+    height: 5px;
     border-radius: 50%;
     background-color: var(--accent-secondary);
 }
@@ -446,8 +447,8 @@ body {
 .home-dashboard-box {
     background-color: var(--bg-card);
     border: 2px solid var(--border-color);
-    border-radius: var(--radius-lg);
-    padding: 24px;
+    border-radius: var(--radius-md);
+    padding: 14px 16px;
     box-shadow: var(--shadow-sm);
 }
 
@@ -455,45 +456,177 @@ body {
     display: flex;
     justify-content: space-between;
     align-items: center;
-    margin-bottom: 20px;
-    padding-bottom: 12px;
+    margin-bottom: 10px;
+    padding-bottom: 6px;
     border-bottom: 2px solid var(--border-light);
 }
 
 .home-dashboard-header h3 {
-    font-size: 1.35rem;
+    font-size: 1.15rem;
     color: var(--text-main);
+}
+
+/* Grille ultra-compacte des cartes de statistiques Accueil */
+#dashboard-summary-list {
+    display: grid;
+    grid-template-columns: repeat(auto-fit, minmax(130px, 1fr));
+    gap: 8px;
+}
+
+.stat-card-compact {
+    padding: 8px 10px;
+    border-radius: 6px;
+    border: 1.5px solid var(--border-color);
+    background: var(--bg-main);
+    display: flex;
+    flex-direction: column;
+    justify-content: center;
+    align-items: center;
+    min-height: 64px;
+    box-shadow: var(--shadow-sm);
+    transition: transform 0.15s;
+}
+
+.stat-card-compact:hover {
+    transform: translateY(-1px);
+}
+
+.stat-card-title {
+    font-size: 0.72rem;
+    font-weight: 700;
+    color: var(--text-muted);
+    text-transform: uppercase;
+    letter-spacing: 0.3px;
+    margin-bottom: 4px;
+    display: flex;
+    align-items: center;
+    gap: 4px;
+}
+
+.stat-card-number {
+    font-size: 1.25rem;
+    font-weight: 800;
+    color: var(--text-main);
+    line-height: 1.1;
+}
+
+.stat-card-pill {
+    font-size: 0.76rem;
+    font-weight: 700;
+    padding: 1px 6px;
+    border-radius: 10px;
+    margin-top: 4px;
+}
+
+/* Encart Notes Manuelles Compact */
+.home-notes-container {
+    background: var(--bg-main);
+    border: 1.5px solid var(--border-color);
+    border-radius: 6px;
+    padding: 8px 10px;
+}
+
+.home-notes-header {
+    display: flex;
+    justify-content: space-between;
+    align-items: center;
+    margin-bottom: 6px;
+    flex-wrap: wrap;
+    gap: 6px;
+}
+
+.home-notes-tabs {
+    display: flex;
+    gap: 4px;
+    background: var(--bg-card);
+    padding: 2px;
+    border-radius: 4px;
+    border: 1px solid var(--border-light);
+}
+
+.home-note-tab {
+    border: none;
+    background: transparent;
+    padding: 3px 8px;
+    font-size: 0.76rem;
+    font-weight: 600;
+    color: var(--text-muted);
+    border-radius: 3px;
+    cursor: pointer;
+    transition: all 0.15s;
+}
+
+.home-note-tab.active {
+    background: var(--accent-primary);
+    color: #FFFFFF;
+}
+
+.home-note-status {
+    font-size: 0.75rem;
+    font-weight: 600;
+    color: var(--accent-success);
+    opacity: 0;
+    transition: opacity 0.3s ease;
+}
+
+.home-notes-textarea {
+    width: 100%;
+    height: 54px;
+    resize: vertical;
+    border: 1px solid var(--border-light);
+    border-radius: 4px;
+    padding: 6px 8px;
+    font-family: inherit;
+    font-size: 0.82rem;
+    color: var(--text-main);
+    background: var(--bg-card);
+    outline: none;
+    transition: border-color 0.15s;
+}
+
+.home-notes-textarea:focus {
+    border-color: var(--accent-primary);
+    box-shadow: 0 0 0 2px rgba(200, 109, 59, 0.15);
 }
 
 .quick-links-grid {
     display: grid;
-    grid-template-columns: repeat(auto-fit, minmax(200px, 1fr));
-    gap: 16px;
-    margin-top: 24px;
+    grid-template-columns: repeat(6, 1fr);
+    gap: 6px;
+    margin-top: 4px;
+}
+
+@media (max-width: 1200px) {
+    .quick-links-grid {
+        grid-template-columns: repeat(3, 1fr);
+    }
 }
 
 .quick-link-card {
     background-color: var(--bg-main);
-    border: 2px solid var(--border-color);
-    border-radius: var(--radius-md);
-    padding: 16px;
+    border: 1.5px solid var(--border-color);
+    border-radius: 5px;
+    padding: 6px 8px;
     cursor: pointer;
-    transition: all 0.2s;
+    transition: all 0.15s;
     display: flex;
     align-items: center;
-    gap: 12px;
+    justify-content: center;
+    gap: 6px;
     font-weight: 600;
+    font-size: 0.78rem;
     color: var(--text-main);
+    min-height: 34px;
 }
 
 .quick-link-card:hover {
     background-color: var(--bg-secondary);
     border-color: var(--accent-primary);
-    transform: translateY(-2px);
+    transform: translateY(-1px);
 }
 
 .quick-link-icon {
-    font-size: 1.6rem;
+    font-size: 1.1rem;
 }
 
 /* ==========================================================================

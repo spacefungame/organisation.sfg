@@ -293,7 +293,9 @@ function renderCalendar() {
             cell.classList.add("selected");
         }
 
-        if (store[dateStr] && store[dateStr].length > 0) {
+        const qRes = appState.getQweekleReservationsForDate(dateStr) || [];
+        const localEvs = store[dateStr] || [];
+        if (qRes.length > 0 || localEvs.length > 0) {
             cell.classList.add("has-events");
         }
 
@@ -306,33 +308,170 @@ function renderCalendar() {
 }
 
 // ============================================================================
-// 5. RENDU DU TABLEAU DE BORD ACCUEIL
+// 5. RENDU DU TABLEAU DE BORD ACCUEIL & STATISTIQUES DÉTAILLÉES
 // ============================================================================
+function getDetailedDateStats(dateStr) {
+    const qweekleRes = appState.getQweekleReservationsForDate(dateStr) || [];
+    const localEvents = appState.getEventsForDate(dateStr) || [];
+
+    let totalReservations = 0;
+    let totalPersonnes = 0;
+
+    let annivRes = 0, annivPers = 0;
+    let asblRes = 0, asblPers = 0;
+    let teamRes = 0, teamPers = 0;
+    let laserRes = 0, laserPers = 0;
+    let quizRes = 0, quizPers = 0;
+
+    // 1. Dépouillement Qweekle
+    qweekleRes.forEach(r => {
+        totalReservations++;
+        const pers = Number(r.nbPersonnes) || 1;
+        totalPersonnes += pers;
+
+        const cats = r.categories || [];
+        const actType = (r.typeActivite || "").toLowerCase();
+        const pack = (r.nomPack || "").toLowerCase();
+        const fullTxt = `${r.nom || ""} ${r.societe || ""} ${pack} ${actType} ${cats.join(" ")}`.toLowerCase();
+
+        // Anniversaires
+        if (cats.includes("anniversaire") || actType.includes("anniversaire") || pack.includes("anniv")) {
+            annivRes++;
+            annivPers += pers;
+        }
+
+        // ASBL / Écoles / Associations / Centres
+        if (cats.includes("asbl") || /\b(asbl|association|école|ecole|centre\s+de\s+jeunesse|centre\s+de\s+loisirs|maison\s+de\s+jeunes|mj)\b/i.test(fullTxt)) {
+            asblRes++;
+            asblPers += pers;
+        }
+
+        // Team building / Entreprise
+        if (cats.includes("team building") || /\b(team\s+building|séminaire|entreprise|collaborateur|teambuilding)\b/i.test(fullTxt) || actType.includes("team game") || cats.includes("team")) {
+            teamRes++;
+            teamPers += pers;
+        }
+
+        // Laser Game
+        if (actType.includes("laser") || pack.includes("laser") || (r.activites && r.activites.some(a => (a.nom || "").toLowerCase().includes("laser")))) {
+            laserRes++;
+            laserPers += pers;
+        }
+
+        // Quiz Game
+        if (actType.includes("quiz") || pack.includes("quiz") || (r.activites && r.activites.some(a => (a.nom || "").toLowerCase().includes("quiz")))) {
+            quizRes++;
+            quizPers += pers;
+        }
+    });
+
+    // 2. Dépouillement Événements Locaux / Manuels
+    localEvents.forEach(ev => {
+        totalReservations++;
+        let pers = Number(ev.nbPersonnes);
+        if (!pers || isNaN(pers)) {
+            const match = `${ev.title || ""} ${ev.notes || ""}`.match(/(\d+)\s*(joueurs|enfants|personnes|pers|pax)\b/i);
+            pers = match ? parseInt(match[1], 10) : 1;
+        }
+        totalPersonnes += pers;
+
+        const evType = (ev.type || "").toLowerCase();
+        const fullTxt = `${ev.title || ""} ${ev.notes || ""}`.toLowerCase();
+
+        if (evType === "anniversaire" || fullTxt.includes("anniversaire")) {
+            annivRes++;
+            annivPers += pers;
+        }
+        if (evType === "asbl" || /\b(asbl|association|école|ecole|centre\s+de\s+jeunesse|centre\s+de\s+loisirs|maison\s+de\s+jeunes|mj)\b/i.test(fullTxt)) {
+            asblRes++;
+            asblPers += pers;
+        }
+        if (evType === "team" || /\b(team\s+building|séminaire|entreprise|collaborateur|teambuilding)\b/i.test(fullTxt)) {
+            teamRes++;
+            teamPers += pers;
+        }
+        if (evType === "laser" || fullTxt.includes("laser")) {
+            laserRes++;
+            laserPers += pers;
+        }
+        if (evType === "quiz" || fullTxt.includes("quiz")) {
+            quizRes++;
+            quizPers += pers;
+        }
+    });
+
+    return {
+        totalReservations, totalPersonnes,
+        annivRes, annivPers,
+        asblRes, asblPers,
+        teamRes, teamPers,
+        laserRes, laserPers,
+        quizRes, quizPers
+    };
+}
+
 function renderHomeDashboard() {
     const listEl = document.getElementById("dashboard-summary-list");
     const countEl = document.getElementById("dashboard-event-count");
+    const titleEl = document.getElementById("dashboard-date-title");
     if (!listEl) return;
 
-    const events = appState.getEventsForDate(appState.currentDate);
-    const totalCount = events.length;
-    const anniversaireCount = events.filter(ev => ev.type === "anniversaire").length;
+    // Déclencher une synchro Qweekle en tâche de fond si la date n'est pas encore synchronisée
+    appState._autoSyncedDates = appState._autoSyncedDates || {};
+    if (!appState._autoSyncedDates[appState.currentDate]) {
+        appState._autoSyncedDates[appState.currentDate] = true;
+        setTimeout(() => { syncQweekleReservations(true); }, 10);
+    }
 
+    const stats = getDetailedDateStats(appState.currentDate);
+
+    // Mise à jour du titre et du badge de comptage
+    const parts = appState.currentDate.split("-");
+    const d = new Date(parts[0], parts[1] - 1, parts[2]);
+    const formattedDate = `${DAYS_FR[d.getDay()]} ${d.getDate()} ${MONTHS_FR[d.getMonth()]}`;
+
+    if (titleEl) {
+        titleEl.textContent = `Synthèse du ${formattedDate}`;
+    }
     if (countEl) {
-        countEl.style.display = "none"; // Masqué car affiché dans les encarts ci-dessous
+        countEl.style.display = "inline-block";
+        countEl.textContent = `${stats.totalReservations} réservation${stats.totalReservations > 1 ? 's' : ''} • ${stats.totalPersonnes} pers.`;
     }
 
     listEl.innerHTML = `
-        <div style="display: grid; grid-template-columns: repeat(auto-fit, minmax(220px, 1fr)); gap: 20px; margin-top: 10px;">
-            <div style="background: var(--bg-main); border: 2px solid var(--border-color); border-radius: var(--radius-md); padding: 24px; text-align: center; box-shadow: var(--shadow-sm);">
-                <div style="font-size: 3rem; font-weight: 700; color: var(--text-main); line-height: 1.2;">${totalCount}</div>
-                <div style="font-size: 1.05rem; font-weight: 600; color: var(--text-muted); margin-top: 8px;">Réservation${totalCount > 1 ? 's' : ''} au total</div>
-            </div>
-            <div style="background: #FDF0D5; border: 2px solid #D4A373; border-radius: var(--radius-md); padding: 24px; text-align: center; box-shadow: var(--shadow-sm);">
-                <div style="font-size: 3rem; font-weight: 700; color: #5E3A1C; line-height: 1.2;">${anniversaireCount}</div>
-                <div style="font-size: 1.05rem; font-weight: 600; color: #5E3A1C; margin-top: 8px;">Réservation${anniversaireCount > 1 ? 's' : ''} Anniversaire${anniversaireCount > 1 ? 's' : ''}</div>
-            </div>
+        <div class="stat-card-compact" style="border-color: var(--border-color);">
+            <div class="stat-card-title"><span>📊</span> <span>TOTAL DU JOUR</span></div>
+            <div class="stat-card-number">${stats.totalReservations} <span style="font-size: 0.7rem; font-weight: 600; color: var(--text-muted);">rés.</span></div>
+            <div class="stat-card-pill" style="background: var(--bg-card); color: var(--text-main);">👥 ${stats.totalPersonnes} pers.</div>
+        </div>
+        <div class="stat-card-compact" style="border-color: #D4A373;">
+            <div class="stat-card-title"><span>🎂</span> <span>ANNIVERSAIRES</span></div>
+            <div class="stat-card-number" style="color: #5E3A1C;">${stats.annivRes} <span style="font-size: 0.7rem; font-weight: 600; color: #8C6A4B;">rés.</span></div>
+            <div class="stat-card-pill" style="background: #FDF0D5; color: #5E3A1C;">👥 ${stats.annivPers} pers.</div>
+        </div>
+        <div class="stat-card-compact" style="border-color: #2F855A;">
+            <div class="stat-card-title"><span>🏛️</span> <span>ASBL / ÉCOLES</span></div>
+            <div class="stat-card-number" style="color: #1C4532;">${stats.asblRes} <span style="font-size: 0.7rem; font-weight: 600; color: #38A169;">rés.</span></div>
+            <div class="stat-card-pill" style="background: #E6FFFA; color: #234E52;">👥 ${stats.asblPers} pers.</div>
+        </div>
+        <div class="stat-card-compact" style="border-color: #3182CE;">
+            <div class="stat-card-title"><span>🤝</span> <span>TEAM BUILDING</span></div>
+            <div class="stat-card-number" style="color: #1A4971;">${stats.teamRes} <span style="font-size: 0.7rem; font-weight: 600; color: #4299E1;">rés.</span></div>
+            <div class="stat-card-pill" style="background: #E8F4F8; color: #1A4971;">👥 ${stats.teamPers} pers.</div>
+        </div>
+        <div class="stat-card-compact" style="border-color: #D9534F;">
+            <div class="stat-card-title"><span>🔫</span> <span>LASER GAME</span></div>
+            <div class="stat-card-number" style="color: #6A1E1A;">${stats.laserRes} <span style="font-size: 0.7rem; font-weight: 600; color: #E53E3E;">rés.</span></div>
+            <div class="stat-card-pill" style="background: #FCE8E6; color: #6A1E1A;">👥 ${stats.laserPers} pers.</div>
+        </div>
+        <div class="stat-card-compact" style="border-color: #805AD5;">
+            <div class="stat-card-title"><span>🧠</span> <span>QUIZ GAME</span></div>
+            <div class="stat-card-number" style="color: #442A75;">${stats.quizRes} <span style="font-size: 0.7rem; font-weight: 600; color: #9F7AEA;">rés.</span></div>
+            <div class="stat-card-pill" style="background: #F3E8FF; color: #442A75;">👥 ${stats.quizPers} pers.</div>
         </div>
     `;
+
+    loadHomeManualNote();
 }
 
 // ============================================================================
@@ -658,9 +797,12 @@ async function syncQweekleReservations(silent = false) {
         }
     }
 
-    // Ré-afficher dès que la synchro Qweekle/Supabase est terminée si nous sommes sur l'onglet planning complet
+    // Ré-afficher dès que la synchro Qweekle/Supabase est terminée
     if (currentActiveTab === "complet" || appState.currentTab === "planning-complet") {
         renderPlanningComplet();
+    } else if (currentActiveTab === "home") {
+        renderHomeDashboard();
+        renderCalendar();
     }
 }
 
@@ -824,3 +966,68 @@ window.deletePostItItem = function(scope, postItId) {
         appState.deletePostIt(scope, postItId);
     }
 };
+
+// ============================================================================
+// 9. GESTION DES NOTES MANUELLES ET CONSIGNES (ACCUEIL)
+// ============================================================================
+let currentHomeNoteType = "date"; // "date" ou "general"
+let homeNoteTimeout = null;
+
+function saveHomeManualNote() {
+    const textarea = document.getElementById("home-manual-note");
+    const statusEl = document.getElementById("home-note-status");
+    if (!textarea) return;
+
+    const key = currentHomeNoteType === "date" 
+        ? `SFG_HOME_NOTE_DATE_${appState.currentDate}` 
+        : `SFG_HOME_NOTE_GENERAL`;
+
+    if (appState.hasLocalStorage()) {
+        localStorage.setItem(key, textarea.value);
+    }
+
+    if (statusEl) {
+        statusEl.style.opacity = "1";
+        if (homeNoteTimeout) clearTimeout(homeNoteTimeout);
+        homeNoteTimeout = setTimeout(() => {
+            statusEl.style.opacity = "0";
+        }, 1800);
+    }
+}
+
+function loadHomeManualNote() {
+    const textarea = document.getElementById("home-manual-note");
+    if (!textarea) return;
+
+    const key = currentHomeNoteType === "date" 
+        ? `SFG_HOME_NOTE_DATE_${appState.currentDate}` 
+        : `SFG_HOME_NOTE_GENERAL`;
+
+    const val = appState.hasLocalStorage() ? (localStorage.getItem(key) || "") : "";
+    textarea.value = val;
+
+    // Mettre à jour l'état visuel des boutons de tabs
+    document.querySelectorAll(".home-note-tab").forEach(btn => {
+        if (btn.getAttribute("data-notetype") === currentHomeNoteType) {
+            btn.classList.add("active");
+        } else {
+            btn.classList.remove("active");
+        }
+        if (btn.getAttribute("data-notetype") === "date") {
+            const parts = appState.currentDate.split("-");
+            const d = new Date(parts[0], parts[1] - 1, parts[2]);
+            btn.textContent = `📅 Jour (${d.getDate()}/${parts[1]})`;
+        } else {
+            btn.textContent = `📌 Note Générale`;
+        }
+    });
+}
+
+function switchHomeNoteTab(type) {
+    currentHomeNoteType = type;
+    loadHomeManualNote();
+}
+
+window.saveHomeManualNote = saveHomeManualNote;
+window.loadHomeManualNote = loadHomeManualNote;
+window.switchHomeNoteTab = switchHomeNoteTab;
