@@ -855,13 +855,13 @@ body {
 
 .qweekle-card-header {
     background-color: var(--bg-secondary);
-    padding: 6px 10px;
+    padding: 4px 8px;
     border-bottom: 1px solid var(--border-color);
     display: flex;
     justify-content: space-between;
     align-items: center;
     flex-wrap: wrap;
-    gap: 6px;
+    gap: 4px;
 }
 
 .qweekle-badges-group {
@@ -874,11 +874,11 @@ body {
 .qweekle-badge {
     display: inline-flex;
     align-items: center;
-    gap: 3px;
-    padding: 2px 7px;
-    border-radius: 10px;
+    gap: 2px;
+    padding: 1px 6px;
+    border-radius: 8px;
     font-weight: 700;
-    font-size: 0.72rem;
+    font-size: 0.68rem;
     border: 1px solid;
     text-transform: uppercase;
     letter-spacing: 0.2px;
@@ -888,87 +888,93 @@ body {
     background-color: var(--bg-main);
     border: 1px solid var(--accent-primary);
     color: var(--text-main);
-    padding: 3px 8px;
+    padding: 2px 6px;
     border-radius: 4px;
     font-weight: 700;
-    font-size: 0.8rem;
+    font-size: 0.76rem;
     display: flex;
     align-items: center;
-    gap: 6px;
+    gap: 4px;
 }
 
 .qweekle-card-body {
-    padding: 8px 10px;
+    padding: 6px 8px;
     display: grid;
-    grid-template-columns: 1.1fr 1.4fr 1.1fr;
-    gap: 8px;
+    grid-template-columns: 230px 1fr 160px;
+    gap: 6px;
+}
+
+.qweekle-card-body.no-options {
+    grid-template-columns: 230px 1fr 130px;
 }
 
 @media (max-width: 1024px) {
-    .qweekle-card-body {
+    .qweekle-card-body, .qweekle-card-body.no-options {
         grid-template-columns: 1fr;
-        gap: 8px;
+        gap: 6px;
     }
 }
 
 .qweekle-column {
     background-color: var(--bg-main);
     border: 1px solid var(--border-light);
-    border-radius: 4px;
-    padding: 8px 10px;
+    border-radius: 3px;
+    padding: 6px 8px;
 }
 
 .qweekle-column-title {
-    font-size: 0.74rem;
+    font-size: 0.7rem;
     text-transform: uppercase;
     color: var(--text-muted);
     font-weight: 700;
-    margin-bottom: 5px;
+    margin-bottom: 4px;
     border-bottom: 1px solid var(--border-color);
-    padding-bottom: 3px;
+    padding-bottom: 2px;
     display: flex;
     align-items: center;
-    gap: 5px;
+    gap: 4px;
 }
 
 .client-main-name {
-    font-size: 0.98rem;
+    font-size: 0.92rem;
     font-weight: 700;
     color: var(--text-main);
-    margin-bottom: 4px;
-    line-height: 1.2;
+    margin-bottom: 3px;
+    line-height: 1.15;
 }
 
 .client-detail-row {
-    font-size: 0.78rem;
+    font-size: 0.74rem;
     color: var(--text-main);
-    margin-bottom: 3px;
+    margin-bottom: 2px;
     display: flex;
     align-items: center;
-    gap: 5px;
+    gap: 4px;
 }
 
 .pack-highlight {
     background-color: var(--bg-secondary);
     border: 1px solid var(--border-color);
-    padding: 4px 6px;
-    border-radius: 4px;
+    padding: 3px 5px;
+    border-radius: 3px;
     font-weight: 600;
-    font-size: 0.78rem;
+    font-size: 0.73rem;
     color: var(--accent-primary);
-    margin-top: 4px;
+    margin-top: 3px;
 }
 
 .activity-item-card {
     background-color: var(--bg-card);
     border: 1px solid var(--border-color);
-    border-left: 3.5px solid var(--accent-primary);
-    border-radius: var(--radius-sm);
-    padding: 6px 10px;
-    margin-bottom: 6px;
+    border-left: 3px solid var(--accent-primary);
+    border-radius: 3px;
+    padding: 3px 6px;
+    margin-bottom: 3px;
     display: flex;
-    flex-direction: column;
-    gap: 2px;
+    justify-content: space-between;
+    align-items: center;
+    flex-wrap: wrap;
+    gap: 6px;
 }
 
 .activity-item-header {
@@ -976,7 +982,7 @@ body {
     justify-content: space-between;
     align-items: center;
     font-weight: 700;
-    font-size: 0.85rem;
+    font-size: 0.78rem;
     color: var(--text-main);
 }
 

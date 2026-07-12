@@ -486,6 +486,16 @@ function renderPlanningComplet(filterCategory = currentQweekleCategoryFilter) {
         card.className = "qweekle-reservation-card";
 
         // Génération des badges de catégories mis en évidence
+        // Formatage d'un ID court pour ne pas surcharger l'en-tête (ex: #a23b6489... + a23bea61...)
+        const shortId = (res.id || "")
+            .split(" + ")
+            .map(idStr => {
+                const clean = idStr.replace(/^QW-/, '').replace(/^OXXX/, '');
+                return clean.length > 8 ? clean.slice(0, 8) + "…" : clean;
+            })
+            .join(" + ");
+
+        // Génération des badges de catégories mis en évidence
         let badgesHtml = "";
         if (res.categories && res.categories.length > 0) {
             res.categories.forEach(cat => {
@@ -496,41 +506,42 @@ function renderPlanningComplet(filterCategory = currentQweekleCategoryFilter) {
             badgesHtml = `<span class="qweekle-badge badge-adulte">👨 Adulte (+18 ans)</span>`;
         }
 
-        // Génération de la chronologie des activités (Si plusieurs occurrences, les afficher toutes !)
+        // Génération de la chronologie des activités (Si plusieurs occurrences, les afficher en bandeaux horizontaux ultra compacts)
         let activitesHtml = "";
         if (res.activites && res.activites.length > 0) {
             res.activites.sort((a, b) => a.heureDebut.localeCompare(b.heureDebut));
             res.activites.forEach(act => {
                 activitesHtml += `
                     <div class="activity-item-card">
-                        <div class="activity-item-header">
-                            <span>▶ ${act.nom}</span>
+                        <div style="display: flex; align-items: center; gap: 6px; flex: 1; min-width: 140px;">
                             <span class="activity-time-pill">⏰ ${act.heureDebut} ➔ ${act.heureFin}</span>
+                            <span style="font-weight: 700; font-size: 0.76rem; color: var(--text-main);">${act.nom}</span>
                         </div>
-                        <div style="font-size: 0.78rem; color: var(--text-muted);">📍 Zone / Arène : <strong>${act.zone || "Salle de jeu"}</strong></div>
+                        <span style="font-size: 0.68rem; color: var(--text-muted); background: var(--bg-main); padding: 1px 5px; border-radius: 3px; border: 1px solid var(--border-light); white-space: nowrap;">📍 ${act.zone || "Salle de jeu"}</span>
                     </div>
                 `;
             });
         } else {
-            activitesHtml = `<div style="color: var(--text-muted); font-style: italic; font-size: 0.82rem;">Détail des activités par créneau non spécifié</div>`;
+            activitesHtml = `<div style="color: var(--text-muted); font-style: italic; font-size: 0.76rem;">Détail des activités non spécifié</div>`;
         }
 
         // Génération de la liste des options et produits supplémentaires
         let optionsHtml = "";
-        if (res.options && res.options.length > 0) {
-            optionsHtml = `<ul class="options-list">`;
+        const hasOptions = res.options && res.options.length > 0;
+        if (hasOptions) {
+            optionsHtml = `<ul class="options-list" style="margin: 0; padding: 0;">`;
             res.options.forEach(opt => {
-                optionsHtml += `<li class="option-pill">📦 ${opt}</li>`;
+                optionsHtml += `<li class="option-pill" style="padding: 3px 8px; font-size: 0.76rem;">📦 ${opt}</li>`;
             });
             optionsHtml += `</ul>`;
         } else {
-            optionsHtml = `<div style="color: var(--text-muted); font-style: italic; font-size: 0.82rem;">Aucune option supplémentaire choisie</div>`;
+            optionsHtml = `<div style="color: var(--text-muted); font-style: italic; font-size: 0.74rem;">Aucune option supplémentaire</div>`;
         }
 
         card.innerHTML = `
             <div class="qweekle-card-header">
                 <div class="qweekle-badges-group">
-                    <span style="font-weight: 700; font-size: 0.8rem; color: var(--text-main); margin-right: 4px;">🏷️ #${res.id}</span>
+                    <span style="font-weight: 700; font-size: 0.74rem; color: var(--text-main); margin-right: 4px;" title="ID complet: #${res.id}">🏷️ #${shortId}</span>
                     ${badgesHtml}
                 </div>
                 <div class="qweekle-time-badge">
@@ -539,26 +550,26 @@ function renderPlanningComplet(filterCategory = currentQweekleCategoryFilter) {
                     <span>🏁 Départ : <strong>${res.heureDepart}</strong></span>
                 </div>
             </div>
-            <div class="qweekle-card-body">
+            <div class="qweekle-card-body ${hasOptions ? '' : 'no-options'}">
                 <!-- Colonne 1 : Client & Groupe -->
                 <div class="qweekle-column">
                     <div class="qweekle-column-title">👤 Client & Groupe</div>
-                    <div class="client-main-name">${res.nom} ${res.prenom}</div>
+                    <div class="client-main-name">${res.nom} ${res.prenom || ''}</div>
                     ${res.societe ? `<div class="client-detail-row" style="font-weight: 600; color: var(--accent-secondary);">🏢 ${res.societe}</div>` : ''}
-                    <div class="client-detail-row">👥 Nombre de personnes : <strong style="font-size: 0.92rem; margin-left: 4px;">${res.nbPersonnes} personne${res.nbPersonnes > 1 ? 's' : ''}</strong></div>
+                    <div class="client-detail-row">👥 Personnes : <strong style="font-size: 0.84rem; margin-left: 2px;">${res.nbPersonnes} pers.</strong></div>
                     <div class="client-detail-row">📌 Type : <strong>${res.typeActivite}</strong></div>
                     
                     <div class="pack-highlight">
-                        🎁 Pack choisi : <strong style="display: block; margin-top: 1px;">${res.nomPack}</strong>
+                        🎁 Pack : <strong style="display: block; margin-top: 1px;">${res.nomPack}</strong>
                     </div>
 
                     ${res.enfantAnniversaire ? `
-                    <div class="birthday-child-banner">
-                        <span class="birthday-cake-icon">🎂</span>
+                    <div class="birthday-child-banner" style="padding: 4px 8px; margin: 4px 0; gap: 6px;">
+                        <span class="birthday-cake-icon" style="width: 26px; height: 26px; font-size: 1.1rem;">🎂</span>
                         <div class="birthday-child-info">
-                            <div class="birthday-child-title">Enfant fêté (Sous-compte client) :</div>
-                            <div class="birthday-child-name">👦/👧 <strong>${res.enfantAnniversaire.prenom}</strong> — <strong>${res.enfantAnniversaire.age} ans</strong> ${res.enfantAnniversaire.sousCompteId ? `(Sous-compte #${res.enfantAnniversaire.sousCompteId})` : ''}</div>
-                            ${res.enfantAnniversaire.dateNaissance ? `<div style="font-size: 0.82rem; color: var(--text-muted); margin-top: 2px;">📅 Date de naissance : ${res.enfantAnniversaire.dateNaissance}</div>` : ''}
+                            <div class="birthday-child-title" style="font-size: 0.68rem;">Enfant fêté :</div>
+                            <div class="birthday-child-name" style="font-size: 0.84rem;">👦/👧 <strong>${res.enfantAnniversaire.prenom}</strong> (${res.enfantAnniversaire.age} ans) ${res.enfantAnniversaire.sousCompteId ? `#${res.enfantAnniversaire.sousCompteId}` : ''}</div>
+                            ${res.enfantAnniversaire.dateNaissance ? `<div style="font-size: 0.72rem; color: var(--text-muted);">📅 ${res.enfantAnniversaire.dateNaissance}</div>` : ''}
                         </div>
                     </div>
                     ` : ''}
@@ -566,16 +577,16 @@ function renderPlanningComplet(filterCategory = currentQweekleCategoryFilter) {
 
                 <!-- Colonne 2 : Activités (Heures de début de chaque activité) -->
                 <div class="qweekle-column">
-                    <div class="qweekle-column-title">⚡ Activités & Heures de début (${res.activites ? res.activites.length : 0} occurrence${(res.activites && res.activites.length > 1) ? 's' : ''})</div>
-                    <div style="margin-top: 8px;">
+                    <div class="qweekle-column-title">⚡ Activités & Heures (${res.activites ? res.activites.length : 0})</div>
+                    <div style="margin-top: 4px;">
                         ${activitesHtml}
                     </div>
                 </div>
 
                 <!-- Colonne 3 : Options supplémentaires -->
                 <div class="qweekle-column">
-                    <div class="qweekle-column-title">🛍️ Options & Produits choisis (${res.options ? res.options.length : 0})</div>
-                    <div style="margin-top: 8px;">
+                    <div class="qweekle-column-title">🛍️ Options (${res.options ? res.options.length : 0})</div>
+                    <div style="margin-top: 4px;">
                         ${optionsHtml}
                     </div>
                 </div>
