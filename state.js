@@ -198,7 +198,35 @@ class AppStateManager {
                 });
 
                 if (response.ok) {
-                    const rows = await response.json();
+                    let rows = await response.json();
+                    
+                    // Récupérer également toutes les lignes rattachées aux order_id trouvés (notamment les options/produits sans start_at ou sur d'autres dates)
+                    const activeOrderIds = Array.from(new Set((rows || []).map(r => r.order_id).filter(Boolean)));
+                    if (activeOrderIds.length > 0) {
+                        try {
+                            const chunkedIds = activeOrderIds.slice(0, 50); // Éviter une URL trop longue si beaucoup de dossiers
+                            const orderFilter = chunkedIds.map(id => `"${id}"`).join(",");
+                            const optUrl = `${CONFIG.SUPABASE_URL}/rest/v1/booking_activities?select=*&order_id=in.(${orderFilter})&order=pack_step.asc`;
+                            const optRes = await fetch(optUrl, {
+                                method: "GET",
+                                headers: {
+                                    "apikey": CONFIG.SUPABASE_KEY,
+                                    "Authorization": `Bearer ${CONFIG.SUPABASE_KEY}`,
+                                    "Accept": "application/json"
+                                }
+                            });
+                            if (optRes.ok) {
+                                const optRows = await optRes.json();
+                                const rowMap = new Map();
+                                rows.forEach(r => rowMap.set(r.id || JSON.stringify(r), r));
+                                (optRows || []).forEach(r => rowMap.set(r.id || JSON.stringify(r), r));
+                                rows = Array.from(rowMap.values());
+                            }
+                        } catch (e) {
+                            console.warn("⚠️ Erreur lors de la récupération complémentaire des options :", e.message);
+                        }
+                    }
+
                     const parsedList = this.parseSupabaseActivitiesToBookings(rows || [], dateStr);
                     
                     if (this.hasLocalStorage()) {
@@ -244,11 +272,24 @@ class AppStateManager {
     }
 
     parseSupabaseActivitiesToBookings(rows, dateStr) {
-        // Filtrer par date locale du dossier (Belgique / fuseau local)
-        const filteredRows = rows.filter(r => {
-            if (!r.start_at) return false;
-            const rowDate = new Date(r.start_at).toLocaleDateString("en-CA", { timeZone: "Europe/Brussels" });
-            return rowDate === dateStr;
+        // Collecter les order_id légitimes pour la date ciblée (ceux qui ont une activité ce jour-là)
+        const validOrderIds = new Set();
+        (rows || []).forEach(r => {
+            if (r.start_at && new Date(r.start_at).toLocaleDateString("en-CA", { timeZone: "Europe/Brussels" }) === dateStr) {
+                if (r.order_id) validOrderIds.add(r.order_id);
+                if (r.qweekle_booking_id) validOrderIds.add(r.qweekle_booking_id);
+            }
+        });
+
+        // Filtrer par date locale du dossier OU conserver si la ligne est une option rattachée à un order_id de ce jour
+        const filteredRows = (rows || []).filter(r => {
+            if (r.start_at) {
+                const rowDate = new Date(r.start_at).toLocaleDateString("en-CA", { timeZone: "Europe/Brussels" });
+                if (rowDate === dateStr) return true;
+            }
+            if (r.order_id && validOrderIds.has(r.order_id)) return true;
+            if (r.qweekle_booking_id && validOrderIds.has(r.qweekle_booking_id)) return true;
+            return false;
         });
 
         // Regrouper par order_id ou par identifiant unique de réservation
@@ -365,18 +406,46 @@ class AppStateManager {
             const allTextForCats = `${nom} ${societe} ${nomPack} ${group.map(a => `${a.label || ''} ${a.category || ''} ${a.subcategory || ''} ${a.raw_payload?.client?.type || ''}`).join(" ")}`;
             const categories = this.detectQweekleCategories(nom, societe, nomPack, allTextForCats);
 
-            // 7. Options supplémentaires choisies (produits / gâteaux / options)
+            // 7. Options supplémentaires choisies (produits / gâteaux / options / articles de commande)
             const options = [];
             group.forEach(act => {
                 const catLower = (act.category || "").toLowerCase();
                 const lblLower = (act.label || "").toLowerCase();
-                if (catLower.includes("option") || catLower.includes("produit") || lblLower.includes("gâteau") || lblLower.includes("gateau") || lblLower.includes("kidibul") || lblLower.includes("brownie") || lblLower.includes("donut") || lblLower.includes("bonbon") || lblLower.includes("chips") || lblLower.includes("granit") || lblLower.includes("crêpe") || lblLower.includes("crepe")) {
-                    if (!options.includes(act.label)) options.push(act.label);
+                const typeRaw = (act.raw_payload?.type || "").toUpperCase();
+
+                const isOptionKeyword = catLower.includes("option") || catLower.includes("produit") || catLower.includes("bar") ||
+                    lblLower.includes("gâteau") || lblLower.includes("gateau") || lblLower.includes("kidibul") || 
+                    lblLower.includes("brownie") || lblLower.includes("donut") || lblLower.includes("bonbon") || 
+                    lblLower.includes("chips") || lblLower.includes("granit") || lblLower.includes("crêpe") || 
+                    lblLower.includes("crepe") || lblLower.includes("formule") || lblLower.includes("goûter") || 
+                    lblLower.includes("gouter") || lblLower.includes("boisson") || lblLower.includes("bière") || 
+                    lblLower.includes("biere") || lblLower.includes("soda") || lblLower.includes("jeton") || 
+                    lblLower.includes("gobelet") || lblLower.includes("pitch") || lblLower.includes("capri") || 
+                    lblLower.includes("café") || lblLower.includes("cafe") || lblLower.includes("table réservée") || 
+                    lblLower.includes("table reservee");
+
+                if (typeRaw === "PRODUCT" || typeRaw === "OPTION" || isOptionKeyword || (!act.start_at && act.label)) {
+                    if (act.label && !options.includes(act.label)) options.push(act.label);
                 }
-                if (act.raw_payload?.order?.items && Array.isArray(act.raw_payload.order.items)) {
-                    act.raw_payload.order.items.forEach(oi => {
-                        if (oi.label && !options.includes(oi.label)) options.push(oi.label);
-                    });
+
+                // Vérifier dans raw_payload si des options ou items de commande sont imbriqués
+                if (act.raw_payload) {
+                    const checkItems = (items) => {
+                        if (Array.isArray(items)) {
+                            items.forEach(oi => {
+                                const oiType = (oi.type || "").toUpperCase();
+                                const oiLabel = oi.label || oi.nom || "";
+                                if (oiLabel && (oiType === "PRODUCT" || oiType === "OPTION" || oi.category?.toLowerCase().includes("option") || oi.category?.toLowerCase().includes("produit") || !oi.start_at)) {
+                                    if (!options.includes(oiLabel)) options.push(oiLabel);
+                                }
+                            });
+                        }
+                    };
+                    checkItems(act.raw_payload.order?.items);
+                    checkItems(act.raw_payload.order?.order_items);
+                    checkItems(act.raw_payload.items);
+                    checkItems(act.raw_payload.options);
+                    checkItems(act.raw_payload.products);
                 }
             });
 
