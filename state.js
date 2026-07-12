@@ -329,33 +329,23 @@ class AppStateManager {
             const orderPacks = new Set();
             group.forEach(act => {
                 const rp = act.raw_payload || {};
-                const oLabel = rp.order?.label || rp.order?.product_label || rp.order?.name || rp.order_item?.label || rp.product?.label || rp.pack_label || rp.activity?.product_label || rp.booking?.label || act.pack_label || act.product_label;
-                if (oLabel && typeof oLabel === 'string' && oLabel.trim()) {
-                    orderPacks.add(oLabel.trim());
+                const itemLabel = rp.order_item?.label || rp.product?.label || rp.pack_label || rp.activity?.product_label || act.pack_label || act.product_label;
+                if (itemLabel && typeof itemLabel === 'string' && itemLabel.trim() && !itemLabel.toLowerCase().includes("accueil") && !itemLabel.toLowerCase().includes("table réservée")) {
+                    orderPacks.add(itemLabel.trim());
                 }
             });
             if (orderPacks.size > 0) {
-                nomPack = Array.from(orderPacks).join(" + ");
-            } else {
-                const mainActs = group.filter(a => !(a.label || "").toLowerCase().includes("accueil") && !(a.label || "").toLowerCase().includes("table réservée"));
-                if (mainActs.length > 0) {
-                    const laserActs = mainActs.filter(a => (a.label || "").toLowerCase().includes("laser"));
-                    if (laserActs.length > 0) {
-                        const totalMin = laserActs.reduce((sum, a) => sum + (Number(a.duration) || 20), 0);
-                        const firstLabel = laserActs[0].label || "";
-                        if (firstLabel.toLowerCase().includes("7-12") || firstLabel.toLowerCase().includes("enfant")) {
-                            nomPack = `${totalMin} Min Laser Games | Enfant 7-12ans`;
-                        } else if (firstLabel.toLowerCase().includes("adulte") || firstLabel.toLowerCase().includes("+18")) {
-                            nomPack = `${totalMin} Min Laser Games | Adulte +18ans`;
-                        } else {
-                            nomPack = `${totalMin} Min Laser Games`;
-                        }
-                    } else {
-                        nomPack = mainActs.map(a => a.label).join(" + ");
-                    }
+                // Si on n'a trouvé qu'un seul label dans order_item mais que le groupe a plusieurs types d'activités distinctes (ex: Team Games et Laser Game), on enrichit
+                const distinctActTypes = new Set(group.map(a => (a.label || a.nom || "").replace(/▶\s*/g, '').trim()).filter(n => !n.toLowerCase().includes("accueil") && !n.toLowerCase().includes("table réservée")));
+                if (distinctActTypes.size > orderPacks.size && orderPacks.size === 1) {
+                    nomPack = this.computePackLabelFromActivities(group, Array.from(orderPacks).join(" + "));
                 } else {
-                    nomPack = group.map(a => a.label).join(" + ") || "Réservation Qweekle";
+                    nomPack = Array.from(orderPacks).join(" + ");
                 }
+            } else {
+                // Tenter de prendre le label parent du panier si pas d'order_item spécifique
+                const parentOrderLabel = group[0]?.raw_payload?.order?.label || group[0]?.raw_payload?.order?.product_label || group[0]?.raw_payload?.order?.name || "";
+                nomPack = this.computePackLabelFromActivities(group, parentOrderLabel);
             }
 
             // 6. Catégories détectées
@@ -450,11 +440,146 @@ class AppStateManager {
         return this.mergeDuplicateClientBookings(bookings);
     }
 
+    computePackLabelFromActivities(acts, fallbackPack = "") {
+        if (!acts || !acts.length) return fallbackPack || "Réservation Qweekle";
+
+        // Filtrer les activités d'accueil ou de table
+        const mainActs = acts.filter(a => {
+            const l = (a.nom || a.label || "").toLowerCase();
+            return !l.includes("accueil") && !l.includes("table réservée");
+        });
+
+        if (!mainActs.length) {
+            return fallbackPack || (acts[0].nom || acts[0].label || "Réservation Qweekle");
+        }
+
+        // Vérifier si toutes les activités principales sont du Laser Game
+        const allLaser = mainActs.every(a => {
+            const l = (a.nom || a.label || "").toLowerCase();
+            return l.includes("laser");
+        });
+
+        if (allLaser) {
+            let totalMin = 0;
+            mainActs.forEach(a => {
+                let dur = Number(a.duration);
+                if (!dur || isNaN(dur)) {
+                    const [sH, sM] = (a.heureDebut || "00:00").split(":").map(Number);
+                    const [eH, eM] = (a.heureFin || "00:00").split(":").map(Number);
+                    dur = (eH * 60 + eM) - (sH * 60 + sM);
+                }
+                totalMin += (dur > 0 ? dur : 20);
+            });
+
+            if (totalMin > 0) {
+                const firstLabel = mainActs[0].nom || mainActs[0].label || fallbackPack || "";
+                if (firstLabel.toLowerCase().includes("7-12") || firstLabel.toLowerCase().includes("enfant") || (fallbackPack || "").toLowerCase().includes("enfant")) {
+                    return `${totalMin} Min Laser Games | Enfant 7-12ans`;
+                } else if (firstLabel.toLowerCase().includes("adulte") || firstLabel.toLowerCase().includes("+18") || (fallbackPack || "").toLowerCase().includes("adulte")) {
+                    return `${totalMin} Min Laser Games | Adulte +18ans`;
+                } else {
+                    return `${totalMin} Min Laser Games`;
+                }
+            }
+        }
+
+        // Si ce n'est pas uniquement du Laser Game (ex: 1 Heure de Team Games + 20 Min Laser Game 7-12 ans)
+        // Récupérer les noms distincts
+        const distinctNames = [];
+        mainActs.forEach(a => {
+            let n = (a.nom || a.label || "").replace(/▶\s*/g, '').trim();
+            if (n && !distinctNames.includes(n)) {
+                distinctNames.push(n);
+            }
+        });
+
+        if (distinctNames.length > 0) {
+            return distinctNames.join(" + ");
+        }
+
+        return fallbackPack || "Réservation Qweekle";
+    }
+
+    splitBookingsBySessions(list) {
+        if (!list || !list.length) return [];
+        const splitList = [];
+
+        list.forEach(booking => {
+            if (!booking.activites || booking.activites.length <= 1) {
+                splitList.push(booking);
+                return;
+            }
+
+            // Trier les activités par heure chronologique
+            const sortedActs = [...booking.activites].sort((a, b) => (a.heureDebut || "").localeCompare(b.heureDebut || ""));
+            const sessions = [];
+            let currentSession = [sortedActs[0]];
+
+            for (let i = 1; i < sortedActs.length; i++) {
+                const prev = currentSession[currentSession.length - 1];
+                const curr = sortedActs[i];
+
+                const [pEndH, pEndM] = (prev.heureFin || "00:00").split(":").map(Number);
+                const prevEndMin = pEndH * 60 + pEndM;
+
+                const [cStartH, cStartM] = (curr.heureDebut || "00:00").split(":").map(Number);
+                const currStartMin = cStartH * 60 + cStartM;
+
+                const gap = currStartMin - prevEndMin;
+                const isNewAccueil = (curr.nom || "").toLowerCase().includes("accueil") && gap >= 30;
+
+                // Si l'écart entre la fin de l'activité précédente et le début de la nouvelle est >= 60 min,
+                // OU si une nouvelle activité "Accueil" démarre avec au moins 30 min d'écart, c'est un nouveau groupe / nouvelle arrivée !
+                if (gap >= 60 || isNewAccueil) {
+                    sessions.push(currentSession);
+                    currentSession = [curr];
+                } else {
+                    currentSession.push(curr);
+                }
+            }
+            sessions.push(currentSession);
+
+            if (sessions.length === 1) {
+                const newPack = this.computePackLabelFromActivities(booking.activites, booking.nomPack);
+                splitList.push({
+                    ...booking,
+                    nomPack: newPack || booking.nomPack
+                });
+            } else {
+                // Plusieurs sessions distinctes sur la journée sous le même nom
+                sessions.forEach((sessActs, idx) => {
+                    const firstAct = sessActs[0];
+                    const lastAct = sessActs[sessActs.length - 1];
+                    const hArr = firstAct.heureDebut || booking.heureArrivee;
+                    const hDep = lastAct.heureFin || booking.heureDepart;
+
+                    const sessNbPers = Math.max(...sessActs.map(a => Number(a.nbPersonnes) || 0), Number(booking.nbPersonnes) || 1);
+                    const sessionPack = this.computePackLabelFromActivities(sessActs, booking.nomPack);
+
+                    splitList.push({
+                        ...booking,
+                        id: `${booking.id || 'QW'}-S${idx + 1}`,
+                        heureArrivee: hArr,
+                        heureDepart: hDep,
+                        nbPersonnes: sessNbPers,
+                        nomPack: sessionPack || `${booking.nomPack} (Session ${idx + 1})`,
+                        activites: sessActs
+                    });
+                });
+            }
+        });
+
+        return splitList;
+    }
+
     mergeDuplicateClientBookings(list) {
         if (!list || !list.length) return [];
 
-        // Trier par heure d'arrivée d'abord
-        const sorted = [...list].sort((a, b) => a.heureArrivee.localeCompare(b.heureArrivee));
+        // 1. D'abord, séparer en sous-réservations distinctes les dossiers qui ont plusieurs arrivées/sessions dans la journée (écart >= 60 min ou nouvel Accueil > 30 min)
+        const splitList = this.splitBookingsBySessions(list);
+
+        // 2. Trier par heure d'arrivée d'abord
+        const sorted = [...splitList].sort((a, b) => (a.heureArrivee || "00:00").localeCompare(b.heureArrivee || "00:00"));
         const merged = [];
 
         sorted.forEach(booking => {
