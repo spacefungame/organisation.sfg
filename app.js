@@ -566,16 +566,32 @@ function renderPlanningComplet(filterCategory = currentQweekleCategoryFilter) {
                         🎁 Pack : <strong style="display: block; margin-top: 1px;">${res.nomPack}</strong>
                     </div>
 
-                    ${res.enfantAnniversaire ? `
-                    <div class="birthday-child-banner" style="padding: 4px 8px; margin: 4px 0; gap: 6px;">
-                        <span class="birthday-cake-icon" style="width: 26px; height: 26px; font-size: 1.1rem;">🎂</span>
-                        <div class="birthday-child-info">
-                            <div class="birthday-child-title" style="font-size: 0.68rem;">Enfant fêté :</div>
-                            <div class="birthday-child-name" style="font-size: 0.84rem;">👦/👧 <strong>${res.enfantAnniversaire.prenom}</strong> (${res.enfantAnniversaire.age} ans) ${res.enfantAnniversaire.sousCompteId ? `#${res.enfantAnniversaire.sousCompteId}` : ''}</div>
-                            ${res.enfantAnniversaire.dateNaissance ? `<div style="font-size: 0.72rem; color: var(--text-muted);">📅 ${res.enfantAnniversaire.dateNaissance}</div>` : ''}
-                        </div>
-                    </div>
-                    ` : ''}
+                    ${((res.categories && res.categories.includes("anniversaire")) || res.enfantAnniversaire) ? (() => {
+                        const ea = res.enfantAnniversaire || {};
+                        let p = ea.prenom || "???";
+                        if (p === "Enfant fêté" || p === "Enfant" || p.trim() === "") p = "???";
+                        let a = ea.age || "???";
+                        let aDisplay = "???";
+                        if (a !== "???" && a !== "Non précisé" && a !== "Âge non précisé" && a !== "" && !isNaN(Number(a))) {
+                            aDisplay = `${Number(a)} ans`;
+                        } else if (typeof a === "string" && a.includes("ans")) {
+                            aDisplay = a;
+                        }
+                        const isUnknown = p === "???" || aDisplay === "???";
+                        return `
+                        <div class="birthday-child-banner" style="padding: 5px 8px; margin: 5px 0 2px 0; gap: 6px; background: ${isUnknown ? 'rgba(239, 68, 68, 0.08)' : 'rgba(255, 152, 0, 0.12)'}; border: 1px solid ${isUnknown ? 'rgba(239, 68, 68, 0.35)' : 'rgba(255, 152, 0, 0.35)'}; border-radius: 6px; display: flex; align-items: center;">
+                            <span class="birthday-cake-icon" style="width: 26px; height: 26px; font-size: 1.15rem; display: flex; align-items: center; justify-content: center;">🎂</span>
+                            <div class="birthday-child-info" style="flex: 1;">
+                                <div class="birthday-child-title" style="font-size: 0.68rem; font-weight: 700; color: ${isUnknown ? '#ef4444' : '#d97706'}; text-transform: uppercase; letter-spacing: 0.4px;">Enfant fêté ${ea.sousCompteId ? `<span style="text-transform: none; font-weight: 500; color: var(--text-muted);">(#${ea.sousCompteId})</span>` : ''}</div>
+                                <div class="birthday-child-name" style="font-size: 0.83rem; margin-top: 1px;">
+                                    Nom : <strong style="color: ${p === '???' ? '#ef4444' : 'var(--text-main)'}">${p}</strong>
+                                    <span style="margin: 0 4px; color: var(--border-strong);">|</span>
+                                    Âge : <strong style="color: ${aDisplay === '???' ? '#ef4444' : 'var(--text-main)'}">${aDisplay}</strong>
+                                </div>
+                                ${ea.dateNaissance ? `<div style="font-size: 0.72rem; color: var(--text-muted); margin-top: 1px;">📅 ${ea.dateNaissance}</div>` : ''}
+                            </div>
+                        </div>`;
+                    })() : ''}
                 </div>
 
                 <!-- Colonne 2 : Activités (Heures de début de chaque activité) -->

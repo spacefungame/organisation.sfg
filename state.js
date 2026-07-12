@@ -402,8 +402,8 @@ class AppStateManager {
                     }
 
                     enfantAnniversaire = {
-                        prenom: bestChild.firstname || bestChild.prenom || bestChild.lastname || "Enfant fêté",
-                        age: age ? Number(age) : "Non précisé",
+                        prenom: bestChild.firstname || bestChild.prenom || bestChild.name || bestChild.lastname || "???",
+                        age: age && !isNaN(Number(age)) ? Number(age) : (age || "???"),
                         dateNaissance: bestChild.birthday_at || bestChild.birthdate || null,
                         sousCompteId: bestChild.id || null
                     };
@@ -415,6 +415,14 @@ class AppStateManager {
                             break;
                         }
                     }
+                }
+                if (!enfantAnniversaire) {
+                    enfantAnniversaire = {
+                        prenom: "???",
+                        age: "???",
+                        dateNaissance: null,
+                        sousCompteId: null
+                    };
                 }
             }
 
@@ -657,6 +665,7 @@ class AppStateManager {
                     booking.categories.forEach(c => catSet.add(c));
                 }
                 match.categories = Array.from(catSet);
+                match.enfantAnniversaire = match.enfantAnniversaire || booking.enfantAnniversaire;
 
                 // 7. Fusion des Options
                 const optSet = new Set(match.options || []);
@@ -722,9 +731,12 @@ class AppStateManager {
             }
         });
 
-        // Regrouper les activités simultanées (ex: adultes et enfants jouant ensemble sur le même créneau)
+        // Regrouper les activités simultanées et s'assurer que les informations d'anniversaire sont complètes
         merged.forEach(item => {
             item.activites = this.groupSimultaneousActivities(item.activites, item.nbPersonnes);
+            if (item.categories && item.categories.includes("anniversaire") && !item.enfantAnniversaire) {
+                item.enfantAnniversaire = { prenom: "???", age: "???", dateNaissance: null, sousCompteId: null };
+            }
         });
 
         return merged;
@@ -899,6 +911,12 @@ class AppStateManager {
             }
         });
 
+        Object.values(bookingsMap).forEach(booking => {
+            if (booking.categories && booking.categories.includes("anniversaire") && !booking.enfantAnniversaire) {
+                booking.enfantAnniversaire = { prenom: "???", age: "???", dateNaissance: null, sousCompteId: null };
+            }
+        });
+
         return this.mergeDuplicateClientBookings(Object.values(bookingsMap));
     }
 
@@ -914,8 +932,8 @@ class AppStateManager {
                 if (!isNaN(bYear)) age = new Date().getFullYear() - bYear;
             }
             return {
-                prenom: sc.firstname || sc.prenom || sc.name || "Enfant fêté",
-                age: age || "Âge non précisé",
+                prenom: sc.firstname || sc.prenom || sc.name || "???",
+                age: age && !isNaN(Number(age)) ? Number(age) : (age || "???"),
                 dateNaissance: sc.birthdate || sc.date_naissance || null,
                 sousCompteId: sc.id || sc.client_id || sc.sub_client_id || null
             };
@@ -933,8 +951,8 @@ class AppStateManager {
                     if (!isNaN(bYear)) age = new Date().getFullYear() - bYear;
                 }
                 return {
-                    prenom: firstChild.firstname || firstChild.prenom || firstChild.name || "Enfant",
-                    age: age || "10",
+                    prenom: firstChild.firstname || firstChild.prenom || firstChild.name || "???",
+                    age: age && !isNaN(Number(age)) ? Number(age) : (age || "???"),
                     dateNaissance: firstChild.birthdate || firstChild.date_naissance || null,
                     sousCompteId: firstChild.id || firstChild.client_id || null
                 };
@@ -944,11 +962,17 @@ class AppStateManager {
         // 3. Extraction depuis les métadonnées, notes ou libellés
         const textToSearch = `${item.order && item.order.notes ? item.order.notes : ''} ${item.activity || ''} ${item.agenda && item.agenda.title ? item.agenda.title : ''}`;
         const matchAge = textToSearch.match(/\b(\d{1,2})\s*ans?\b/i);
-        const matchName = textToSearch.match(/Anniversaire\s+([A-ZÉÈÀa-zéèà-]+)/i);
-        if (matchName || matchAge) {
+        let matchName = textToSearch.match(/Anniversaire\s+([A-ZÉÈÀa-zéèà-]+)/i);
+        const forbiddenWords = ["laser", "game", "games", "enfant", "enfants", "space", "gravity", "formule", "pack", "ado", "ados", "junior", "juniors", "de", "du", "des", "le", "la", "les", "party"];
+        let prenomFound = "???";
+        if (matchName && matchName[1] && !forbiddenWords.includes(matchName[1].toLowerCase())) {
+            prenomFound = matchName[1];
+        }
+
+        if (prenomFound !== "???" || matchAge) {
             return {
-                prenom: matchName ? matchName[1] : "Enfant fêté",
-                age: matchAge ? parseInt(matchAge[1], 10) : "Non précisé",
+                prenom: prenomFound,
+                age: matchAge ? parseInt(matchAge[1], 10) : "???",
                 dateNaissance: null,
                 sousCompteId: null
             };
