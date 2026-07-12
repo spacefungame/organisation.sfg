@@ -452,39 +452,53 @@ function renderHomeDashboard() {
 
     listEl.innerHTML = `
         <div class="stat-card-compact" style="border-color: var(--border-color);">
-            <div class="stat-card-title"><span>📊</span> <span>TOTAL JOUR</span></div>
-            <div class="stat-card-number">${stats.totalReservations} <span style="font-size: 0.7rem; font-weight: 600; color: var(--text-muted);">rés.</span></div>
-            <div class="stat-card-pill" style="background: var(--bg-card); color: var(--text-main);">👥 ${stats.totalPersonnes} pers.</div>
+            <div class="stat-card-title"><span>📊</span> <span>TOTAL</span></div>
+            <div class="stat-card-stats">
+                <span class="stat-card-number">${stats.totalReservations} <small style="font-size: 0.62rem; font-weight: 600; color: var(--text-muted);">rés.</small></span>
+                <span class="stat-card-pill" style="background: var(--bg-card); color: var(--text-main);">👥 ${stats.totalPersonnes}</span>
+            </div>
         </div>
         <div class="stat-card-compact" style="border-color: #D4A373;">
-            <div class="stat-card-title"><span>🎂</span> <span>ANNIVERSAIRES</span></div>
-            <div class="stat-card-number" style="color: #5E3A1C;">${stats.annivRes} <span style="font-size: 0.7rem; font-weight: 600; color: #8C6A4B;">rés.</span></div>
-            <div class="stat-card-pill" style="background: #FDF0D5; color: #5E3A1C;">👥 ${stats.annivPers} pers.</div>
+            <div class="stat-card-title"><span>🎂</span> <span>ANNIV.</span></div>
+            <div class="stat-card-stats">
+                <span class="stat-card-number" style="color: #5E3A1C;">${stats.annivRes} <small style="font-size: 0.62rem; font-weight: 600; color: #8C6A4B;">rés.</small></span>
+                <span class="stat-card-pill" style="background: #FDF0D5; color: #5E3A1C;">👥 ${stats.annivPers}</span>
+            </div>
         </div>
         <div class="stat-card-compact" style="border-color: #2F855A;">
-            <div class="stat-card-title"><span>🏛️</span> <span>ASBL/ÉCOLES</span></div>
-            <div class="stat-card-number" style="color: #1C4532;">${stats.asblRes} <span style="font-size: 0.7rem; font-weight: 600; color: #38A169;">rés.</span></div>
-            <div class="stat-card-pill" style="background: #E6FFFA; color: #234E52;">👥 ${stats.asblPers} pers.</div>
+            <div class="stat-card-title"><span>🏛️</span> <span>ASBL</span></div>
+            <div class="stat-card-stats">
+                <span class="stat-card-number" style="color: #1C4532;">${stats.asblRes} <small style="font-size: 0.62rem; font-weight: 600; color: #38A169;">rés.</small></span>
+                <span class="stat-card-pill" style="background: #E6FFFA; color: #234E52;">👥 ${stats.asblPers}</span>
+            </div>
         </div>
         <div class="stat-card-compact" style="border-color: #3182CE;">
-            <div class="stat-card-title"><span>🤝</span> <span>TEAM BUILD.</span></div>
-            <div class="stat-card-number" style="color: #1A4971;">${stats.teamRes} <span style="font-size: 0.7rem; font-weight: 600; color: #4299E1;">rés.</span></div>
-            <div class="stat-card-pill" style="background: #E8F4F8; color: #1A4971;">👥 ${stats.teamPers} pers.</div>
+            <div class="stat-card-title"><span>🤝</span> <span>TEAM B.</span></div>
+            <div class="stat-card-stats">
+                <span class="stat-card-number" style="color: #1A4971;">${stats.teamRes} <small style="font-size: 0.62rem; font-weight: 600; color: #4299E1;">rés.</small></span>
+                <span class="stat-card-pill" style="background: #E8F4F8; color: #1A4971;">👥 ${stats.teamPers}</span>
+            </div>
         </div>
         <div class="stat-card-compact" style="border-color: #DD6B20;">
-            <div class="stat-card-title"><span>🏆</span> <span>TEAM GAME</span></div>
-            <div class="stat-card-number" style="color: #7B341E;">${stats.teamGameRes} <span style="font-size: 0.7rem; font-weight: 600; color: #C05621;">rés.</span></div>
-            <div class="stat-card-pill" style="background: #FFFAF0; color: #7B341E;">👥 ${stats.teamGamePers} pers.</div>
+            <div class="stat-card-title"><span>🏆</span> <span>TEAM G.</span></div>
+            <div class="stat-card-stats">
+                <span class="stat-card-number" style="color: #7B341E;">${stats.teamGameRes} <small style="font-size: 0.62rem; font-weight: 600; color: #C05621;">rés.</small></span>
+                <span class="stat-card-pill" style="background: #FFFAF0; color: #7B341E;">👥 ${stats.teamGamePers}</span>
+            </div>
         </div>
         <div class="stat-card-compact" style="border-color: #D9534F;">
-            <div class="stat-card-title"><span>🔫</span> <span>LASER GAME</span></div>
-            <div class="stat-card-number" style="color: #6A1E1A;">${stats.laserRes} <span style="font-size: 0.7rem; font-weight: 600; color: #E53E3E;">rés.</span></div>
-            <div class="stat-card-pill" style="background: #FCE8E6; color: #6A1E1A;">👥 ${stats.laserPers} pers.</div>
+            <div class="stat-card-title"><span>🔫</span> <span>LASER</span></div>
+            <div class="stat-card-stats">
+                <span class="stat-card-number" style="color: #6A1E1A;">${stats.laserRes} <small style="font-size: 0.62rem; font-weight: 600; color: #E53E3E;">rés.</small></span>
+                <span class="stat-card-pill" style="background: #FCE8E6; color: #6A1E1A;">👥 ${stats.laserPers}</span>
+            </div>
         </div>
         <div class="stat-card-compact" style="border-color: #805AD5;">
-            <div class="stat-card-title"><span>🧠</span> <span>QUIZ GAME</span></div>
-            <div class="stat-card-number" style="color: #442A75;">${stats.quizRes} <span style="font-size: 0.7rem; font-weight: 600; color: #9F7AEA;">rés.</span></div>
-            <div class="stat-card-pill" style="background: #F3E8FF; color: #442A75;">👥 ${stats.quizPers} pers.</div>
+            <div class="stat-card-title"><span>🧠</span> <span>QUIZ</span></div>
+            <div class="stat-card-stats">
+                <span class="stat-card-number" style="color: #442A75;">${stats.quizRes} <small style="font-size: 0.62rem; font-weight: 600; color: #9F7AEA;">rés.</small></span>
+                <span class="stat-card-pill" style="background: #F3E8FF; color: #442A75;">👥 ${stats.quizPers}</span>
+            </div>
         </div>
     `;
 

@@ -466,53 +466,56 @@ body {
     color: var(--text-main);
 }
 
-/* Grille ultra-compacte des cartes de statistiques Accueil (7 colonnes sur 1 seule ligne) */
+/* Grille ultra-compacte des cartes de statistiques Accueil (7 colonnes sur 1 seule ligne garantie) */
 #dashboard-summary-list {
     display: grid;
-    grid-template-columns: repeat(7, 1fr);
-    gap: 6px;
+    grid-template-columns: repeat(7, minmax(0, 1fr));
+    gap: 4px;
 }
 
-@media (max-width: 1300px) {
+@media (max-width: 800px) {
     #dashboard-summary-list {
-        grid-template-columns: repeat(4, 1fr);
-    }
-}
-
-@media (max-width: 768px) {
-    #dashboard-summary-list {
-        grid-template-columns: repeat(2, 1fr);
+        grid-template-columns: repeat(2, minmax(0, 1fr));
     }
 }
 
 .stat-card-compact {
-    padding: 6px 3px;
-    border-radius: 6px;
-    border: 1.5px solid var(--border-color);
+    padding: 4px 2px;
+    border-radius: 5px;
+    border: 1.2px solid var(--border-color);
     background: var(--bg-main);
     display: flex;
     flex-direction: column;
     justify-content: center;
     align-items: center;
-    min-height: 56px;
-    box-shadow: var(--shadow-sm);
-    transition: transform 0.15s;
+    min-height: 40px;
+    box-shadow: none;
+    transition: background-color 0.15s;
     overflow: hidden;
 }
 
 .stat-card-compact:hover {
-    transform: translateY(-1px);
+    background-color: var(--bg-hover);
 }
 
 .stat-card-title {
-    font-size: 0.64rem;
+    font-size: 0.61rem;
     font-weight: 700;
     color: var(--text-muted);
     text-transform: uppercase;
-    letter-spacing: 0.2px;
-    margin-bottom: 3px;
+    letter-spacing: 0px;
+    margin-bottom: 2px;
     display: flex;
     align-items: center;
+    justify-content: center;
+    gap: 2px;
+    white-space: nowrap;
+    width: 100%;
+}
+
+.stat-card-stats {
+    display: flex;
+    align-items: baseline;
     justify-content: center;
     gap: 3px;
     white-space: nowrap;
@@ -520,19 +523,19 @@ body {
 }
 
 .stat-card-number {
-    font-size: 1.15rem;
+    font-size: 0.92rem;
     font-weight: 800;
     color: var(--text-main);
-    line-height: 1.1;
+    line-height: 1;
     white-space: nowrap;
 }
 
 .stat-card-pill {
-    font-size: 0.72rem;
+    font-size: 0.68rem;
     font-weight: 700;
-    padding: 1px 5px;
-    border-radius: 10px;
-    margin-top: 3px;
+    padding: 0px 4px;
+    border-radius: 6px;
+    line-height: 1.2;
     white-space: nowrap;
 }
 
