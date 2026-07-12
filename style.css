@@ -1255,3 +1255,127 @@ body {
     color: #5E3A1C;
     margin-top: 1px;
 }
+
+/* ==========================================================================
+   BOUTON ET STYLES DU RAPPORT D'ERREUR (AUDIT EXCEL QWEEKLE)
+   ========================================================================== */
+.btn-error-report {
+    background: #FFF5F5;
+    color: #C53030;
+    border: 1.5px solid #FEB2B2;
+    border-radius: 6px;
+    padding: 8px 14px;
+    font-weight: 700;
+    font-size: 0.85rem;
+    cursor: pointer;
+    display: inline-flex;
+    align-items: center;
+    justify-content: center;
+    gap: 8px;
+    box-shadow: none;
+    transition: all 0.2s;
+    width: 100%;
+}
+
+.btn-error-report:hover {
+    background: #FED7D7;
+    border-color: #FC8181;
+    transform: translateY(-1px);
+}
+
+.excel-dropzone:hover {
+    border-color: #C53030 !important;
+    background: #FFF5F5 !important;
+}
+
+.a4-error-table th, .a4-error-table td {
+    padding: 8px 10px;
+    border-bottom: 1px solid var(--border-light);
+    vertical-align: top;
+}
+
+.a4-error-table tbody tr:nth-child(even) {
+    background: var(--bg-card);
+}
+
+.a4-error-table tbody tr:hover {
+    background: var(--bg-hover);
+}
+
+.report-badge-err {
+    display: inline-block;
+    padding: 2px 6px;
+    border-radius: 4px;
+    font-size: 0.75rem;
+    font-weight: 700;
+}
+
+.badge-err-missing { background: #FED7D7; color: #9B2C2C; }
+.badge-err-qty { background: #FEEBC8; color: #9C4221; }
+.badge-err-time { background: #E9D8FD; color: #553C9A; }
+.badge-err-cancelled { background: #E2E8F0; color: #4A5568; }
+.badge-err-ok { background: #C6F6D5; color: #22543D; }
+
+/* ==========================================================================
+   IMPRESSION A4 STRICTE (RAPPORT D'AUDIT)
+   ========================================================================== */
+@media print {
+    body > *:not(#error-report-modal) {
+        display: none !important;
+    }
+    #error-report-modal {
+        position: static !important;
+        background: transparent !important;
+        padding: 0 !important;
+        display: block !important;
+        overflow: visible !important;
+        z-index: 99999 !important;
+    }
+    #error-report-modal .modal-box {
+        box-shadow: none !important;
+        border: none !important;
+        padding: 0 !important;
+        max-width: 100% !important;
+        width: 100% !important;
+        margin: 0 !important;
+        background: white !important;
+    }
+    #error-report-modal .modal-header-actions,
+    #error-report-modal .report-modal-footer-toolbar,
+    #error-report-step-import {
+        display: none !important;
+    }
+    #error-report-step-results {
+        display: block !important;
+    }
+    @page {
+        size: A4 portrait;
+        margin: 12mm 15mm;
+    }
+    .a4-report-container {
+        width: 100% !important;
+        background: white !important;
+        color: black !important;
+    }
+    .a4-error-table {
+        border-collapse: collapse !important;
+        width: 100% !important;
+        font-size: 9.5pt !important;
+    }
+    .a4-error-table th, .a4-error-table td {
+        border: 1px solid #CBD5E0 !important;
+        padding: 5px 6px !important;
+        color: black !important;
+    }
+    .a4-error-table th {
+        background-color: #EDF2F7 !important;
+        -webkit-print-color-adjust: exact !important;
+        print-color-adjust: exact !important;
+    }
+    .report-badge-box {
+        -webkit-print-color-adjust: exact !important;
+        print-color-adjust: exact !important;
+        border: 1px solid #CBD5E0 !important;
+    }
+}
+

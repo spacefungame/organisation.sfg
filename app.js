@@ -1057,3 +1057,344 @@ function switchHomeNoteTab(type) {
 window.saveHomeManualNote = saveHomeManualNote;
 window.loadHomeManualNote = loadHomeManualNote;
 window.switchHomeNoteTab = switchHomeNoteTab;
+
+// =========================================================================
+// GESTION DU RAPPORT D'ERREUR (AUDIT EXCEL QWEEKLE VS SITE)
+// =========================================================================
+let importedExcelDataRows = [];
+let importedExcelFilename = "";
+
+function openErrorReportModal() {
+    resetErrorReportImport();
+    openModal('error-report-modal');
+}
+
+function resetErrorReportImport() {
+    importedExcelDataRows = [];
+    importedExcelFilename = "";
+    const stepImport = document.getElementById('error-report-step-import');
+    const stepResults = document.getElementById('error-report-step-results');
+    const fileInfo = document.getElementById('error-report-file-info');
+    const loadingEl = document.getElementById('error-report-loading');
+    const printBtn = document.getElementById('btn-print-report');
+    const fileInput = document.getElementById('error-report-file-input');
+
+    if (stepImport) stepImport.style.display = 'block';
+    if (stepResults) stepResults.style.display = 'none';
+    if (fileInfo) fileInfo.style.display = 'none';
+    if (loadingEl) loadingEl.style.display = 'none';
+    if (printBtn) printBtn.style.display = 'none';
+    if (fileInput) fileInput.value = '';
+}
+
+function handleErrorReportFileSelect(event) {
+    const file = event.target.files && event.target.files[0];
+    if (!file) return;
+
+    importedExcelFilename = file.name;
+    const reader = new FileReader();
+
+    reader.onload = function(e) {
+        try {
+            if (typeof XLSX === 'undefined') {
+                alert("Erreur : La bibliothèque SheetJS (XLSX) n'est pas chargée.");
+                return;
+            }
+            const data = new Uint8Array(e.target.result);
+            const workbook = XLSX.read(data, { type: 'array' });
+            const firstSheetName = workbook.SheetNames[0];
+            const worksheet = workbook.Sheets[firstSheetName];
+            const jsonRows = XLSX.utils.sheet_to_json(worksheet, { header: 1 });
+
+            if (jsonRows && jsonRows.length > 1) {
+                // Filtrer les lignes vides
+                importedExcelDataRows = jsonRows.filter(r => r && r.length > 2 && r[2]);
+                const fileInfo = document.getElementById('error-report-file-info');
+                const filenameEl = document.getElementById('error-report-filename');
+                const filemetaEl = document.getElementById('error-report-filemeta');
+
+                if (filenameEl) filenameEl.textContent = importedExcelFilename;
+                if (filemetaEl) filemetaEl.textContent = `${importedExcelDataRows.length - 1} réservations et créneaux détectés`;
+                if (fileInfo) fileInfo.style.display = 'flex';
+            } else {
+                alert("Le fichier Excel sélectionné semble vide ou son format n'a pas été reconnu.");
+            }
+        } catch (err) {
+            console.error("Erreur lecture Excel :", err);
+            alert("Erreur lors de la lecture du fichier Excel : " + err.message);
+        }
+    };
+
+    reader.readAsArrayBuffer(file);
+}
+
+function isSameClientForAudit(excelClient, booking) {
+    if (!excelClient || !booking) return false;
+    const cleanExcel = String(excelClient).toLowerCase().normalize("NFD").replace(/[\u0300-\u036f]/g, "").replace(/[^a-z0-9]/g, " ").trim();
+    const cleanNom = String(booking.nom || "").toLowerCase().normalize("NFD").replace(/[\u0300-\u036f]/g, "").replace(/[^a-z0-9]/g, " ").trim();
+    const cleanSoc = String(booking.societe || "").toLowerCase().normalize("NFD").replace(/[\u0300-\u036f]/g, "").replace(/[^a-z0-9]/g, " ").trim();
+
+    if (!cleanExcel) return false;
+    if (cleanNom && cleanExcel.includes(cleanNom)) return true;
+    if (cleanSoc && cleanExcel.includes(cleanSoc)) return true;
+    if (cleanNom && cleanNom.includes(cleanExcel)) return true;
+    if (cleanSoc && cleanSoc.includes(cleanExcel)) return true;
+
+    const wordsExcel = cleanExcel.split(/\s+/).filter(w => w.length >= 3 && !['monsieur', 'madame', 'asbl', 'ecole', 'collège', 'lycée', 'institut'].includes(w));
+    const wordsNom = cleanNom.split(/\s+/).filter(w => w.length >= 3);
+    const wordsSoc = cleanSoc.split(/\s+/).filter(w => w.length >= 3);
+
+    for (const w of wordsExcel) {
+        if (wordsNom.includes(w) || wordsSoc.includes(w)) {
+            return true;
+        }
+    }
+    return false;
+}
+
+async function runErrorReportAudit() {
+    if (!importedExcelDataRows || importedExcelDataRows.length <= 1) {
+        alert("Veuillez d'abord sélectionner un fichier Excel valide.");
+        return;
+    }
+
+    const fileInfo = document.getElementById('error-report-file-info');
+    const loadingEl = document.getElementById('error-report-loading');
+    const loadingText = document.getElementById('error-report-loading-text');
+
+    if (fileInfo) fileInfo.style.display = 'none';
+    if (loadingEl) loadingEl.style.display = 'block';
+
+    // 1. Extraire les dates uniques des lignes Excel (format AAAA-MM-JJ)
+    const distinctDates = new Set();
+    const rowsWithoutHeader = importedExcelDataRows.slice(1);
+
+    rowsWithoutHeader.forEach(r => {
+        const dateTimeStr = String(r[2] || "").trim(); // Créneau réservé
+        const datePart = dateTimeStr.split(" ")[0];
+        if (datePart && /^\d{4}-\d{2}-\d{2}$/.test(datePart)) {
+            distinctDates.add(datePart);
+        }
+    });
+
+    const datesArray = Array.from(distinctDates).sort();
+    if (loadingText) loadingText.textContent = `Synchronisation temps réel et vérification sur ${datesArray.length} journées...`;
+
+    // 2. Synchroniser ou charger les données en ligne/cache pour chaque date
+    for (const d of datesArray) {
+        const cached = appState.getQweekleReservationsForDate(d);
+        // Si le cache est vide et que l'API/Supabase est configurée, on tente un fetch
+        if ((!cached || cached.length === 0) && typeof CONFIG !== 'undefined' && (CONFIG.SUPABASE_URL || CONFIG.QWEEKLE_API_KEY)) {
+            try {
+                await appState.fetchAndSyncQweekleReservations(d);
+            } catch (e) {
+                console.warn("Audit - Erreur de synchro pour", d, e);
+            }
+        }
+    }
+
+    // 3. Procéder au contrôle croisé ligne par ligne
+    const auditResults = [];
+    let countMissing = 0;
+    let countQty = 0;
+    let countTime = 0;
+    let countOk = 0;
+
+    // Regrouper les lignes Excel par client et par date pour une vue d'ensemble propre
+    const excelByDateClient = {};
+
+    rowsWithoutHeader.forEach(r => {
+        const dateTimeStr = String(r[2] || "").trim();
+        const dateStr = dateTimeStr.split(" ")[0] || "Date inconnue";
+        const timeStr = dateTimeStr.split(" ")[1] ? dateTimeStr.split(" ")[1].slice(0, 5) : "";
+        const clientName = String(r[3] || "Client Inconnu").trim();
+        const actLabel = String(r[6] || "Activité").trim();
+        const qty = Number(r[7]) || 1;
+        const status = String(r[9] || "").toLowerCase();
+        const isActive = r[0] !== false && r[0] !== "false" && r[0] !== 0 && status !== "cancelled" && status !== "canceled";
+
+        const key = `${dateStr}____${clientName.toLowerCase()}`;
+        if (!excelByDateClient[key]) {
+            excelByDateClient[key] = {
+                dateStr,
+                clientName,
+                email: String(r[4] || ""),
+                phone: String(r[5] || ""),
+                status,
+                isActive,
+                activities: [],
+                totalQty: 0
+            };
+        }
+        excelByDateClient[key].activities.push({ timeStr, actLabel, qty, status, isActive });
+        if (qty > excelByDateClient[key].totalQty) {
+            excelByDateClient[key].totalQty = qty;
+        }
+    });
+
+    // Analyser chaque client/date présent dans l'Excel
+    Object.values(excelByDateClient).forEach(item => {
+        const { dateStr, clientName, totalQty, activities, isActive, status } = item;
+        const siteBookings = appState.getQweekleReservationsForDate(dateStr) || [];
+        const localEvents = appState.getEventsForDate(dateStr) || [];
+
+        // Chercher une correspondance sur le site
+        const matchBooking = siteBookings.find(b => isSameClientForAudit(clientName, b));
+        const matchEvent = localEvents.find(e => isSameClientForAudit(clientName, { nom: e.title || e.clientName }));
+
+        const activitiesText = activities.map(a => `${a.timeStr ? a.timeStr + ' - ' : ''}${a.actLabel} (${a.qty} pers.)`).join("<br>");
+
+        if (!isActive) {
+            // Le dossier est annulé ou inactif dans l'Excel
+            if (matchBooking || matchEvent) {
+                auditResults.push({
+                    dateStr,
+                    clientName,
+                    type: "⚠️ Annulé dans Qweekle mais présent sur le site",
+                    badgeClass: "badge-err-missing",
+                    detailQweekle: `Marqué comme '${status || 'inactif'}' dans l'Excel Qweekle :<br>${activitiesText}`,
+                    detailSite: matchBooking ? `Dossier actif sur le site (${matchBooking.nbPersonnes} pers., ${matchBooking.heureArrivee})` : `Activité manuelle active : ${matchEvent.title}`,
+                    action: "À supprimer du site ou vérifier Qweekle"
+                });
+                countMissing++;
+            } else {
+                countOk++;
+            }
+            return;
+        }
+
+        if (!matchBooking && !matchEvent) {
+            auditResults.push({
+                dateStr,
+                clientName,
+                type: "❌ Réservation manquante sur le site",
+                badgeClass: "badge-err-missing",
+                detailQweekle: activitiesText,
+                detailSite: `<span style="color: #C53030; font-weight: 700;">Introuvable dans le planning en ligne du ${dateStr}</span>`,
+                action: "À synchroniser d'urgence"
+            });
+            countMissing++;
+            return;
+        }
+
+        if (matchBooking) {
+            const siteQty = Number(matchBooking.nbPersonnes) || 0;
+            if (totalQty > 0 && Math.abs(totalQty - siteQty) > 2) {
+                auditResults.push({
+                    dateStr,
+                    clientName,
+                    type: "⚠️ Écart de nombre de participants",
+                    badgeClass: "badge-err-qty",
+                    detailQweekle: activitiesText,
+                    detailSite: `Enregistré avec <strong>${siteQty} personne(s)</strong> (Arrivée : ${matchBooking.heureArrivee})`,
+                    action: "Vérifier l'effectif exact"
+                });
+                countQty++;
+                return;
+            }
+
+            const firstExcelTime = activities[0]?.timeStr;
+            if (firstExcelTime && matchBooking.heureArrivee && Math.abs(parseInt(firstExcelTime) - parseInt(matchBooking.heureArrivee)) >= 2) {
+                auditResults.push({
+                    dateStr,
+                    clientName,
+                    type: "⏱️ Écart d'horaire d'arrivée",
+                    badgeClass: "badge-err-time",
+                    detailQweekle: activitiesText,
+                    detailSite: `Heure d'arrivée sur le site : <strong>${matchBooking.heureArrivee}</strong> (Fin : ${matchBooking.heureDepart})`,
+                    action: "Vérifier l'heure de début"
+                });
+                countTime++;
+                return;
+            }
+
+            countOk++;
+        } else if (matchEvent) {
+            countOk++;
+        }
+    });
+
+    // 4. Vérifier les "Orphelins" : Dossiers présents sur le site pour ces dates mais absents du fichier Excel
+    datesArray.forEach(d => {
+        const siteBookings = appState.getQweekleReservationsForDate(d) || [];
+        siteBookings.forEach(booking => {
+            const fullName = `${booking.nom || ''} ${booking.societe || ''}`.trim();
+            if (!fullName) return;
+
+            const foundInExcel = Object.values(excelByDateClient).some(item => item.dateStr === d && isSameClientForAudit(item.clientName, booking));
+            if (!foundInExcel) {
+                auditResults.push({
+                    dateStr: d,
+                    clientName: fullName,
+                    type: "❓ Présent sur le site mais absent du fichier Excel",
+                    badgeClass: "badge-err-time",
+                    detailQweekle: `<span style="color: #718096; font-style: italic;">Aucune ligne dans l'export Excel pour ce client le ${d}</span>`,
+                    detailSite: `Dossier #${booking.id} (${booking.heureArrivee} - ${booking.heureDepart}) • <strong>${booking.nbPersonnes} pers.</strong><br>Pack : ${booking.nomPack || 'Activité'}`,
+                    action: "Vérifier si annulé dans Qweekle"
+                });
+                countMissing++;
+            }
+        });
+    });
+
+    // 5. Mettre à jour l'affichage du rapport
+    const tbody = document.getElementById('a4-error-tbody');
+    if (tbody) {
+        if (auditResults.length === 0) {
+            tbody.innerHTML = `
+                <tr>
+                    <td colspan="5" style="text-align: center; padding: 35px 15px; color: #276749; background: #F0FFF4;">
+                        <span style="font-size: 2.2rem; display: block; margin-bottom: 8px;">🎉</span>
+                        <strong style="font-size: 1.1rem; display: block; margin-bottom: 4px;">Zéro anomalie ! Votre site est 100% conforme au fichier Excel.</strong>
+                        <span style="font-size: 0.88rem; color: #2F855A;">Toutes les ${importedExcelDataRows.length - 1} lignes et ${datesArray.length} dates ont été vérifiées avec succès.</span>
+                    </td>
+                </tr>
+            `;
+        } else {
+            auditResults.sort((a, b) => a.dateStr.localeCompare(b.dateStr));
+            tbody.innerHTML = auditResults.map(item => `
+                <tr>
+                    <td style="font-weight: 700; color: #1A202C;">${item.dateStr.split('-').reverse().join('/')}</td>
+                    <td style="font-weight: 700; color: #2D3748;">${item.clientName}</td>
+                    <td><span class="report-badge-err ${item.badgeClass}">${item.type}</span></td>
+                    <td style="line-height: 1.4; color: #4A5568;">
+                        <div style="margin-bottom: 4px;"><strong>Qweekle :</strong><br>${item.detailQweekle}</div>
+                        <div><strong>Planning :</strong> ${item.detailSite}</div>
+                    </td>
+                    <td style="font-weight: 600; color: #C53030; font-size: 0.82rem;">${item.action}</td>
+                </tr>
+            `).join("");
+        }
+    }
+
+    document.getElementById('badge-err-missing').textContent = countMissing;
+    document.getElementById('badge-err-qty').textContent = countQty;
+    document.getElementById('badge-err-time').textContent = countTime;
+    document.getElementById('badge-err-ok').textContent = countOk;
+
+    const nowStr = new Date().toLocaleDateString('fr-FR', { day: '2-digit', month: '2-digit', year: 'numeric', hour: '2-digit', minute: '2-digit' });
+    if (document.getElementById('report-print-date')) document.getElementById('report-print-date').textContent = nowStr;
+    if (document.getElementById('report-footer-date')) document.getElementById('report-footer-date').textContent = nowStr;
+    if (document.getElementById('report-excel-filename-print')) document.getElementById('report-excel-filename-print').textContent = importedExcelFilename;
+    if (document.getElementById('report-excel-rowcount-print')) document.getElementById('report-excel-rowcount-print').textContent = importedExcelDataRows.length - 1;
+    if (document.getElementById('report-excel-datecount-print')) document.getElementById('report-excel-datecount-print').textContent = datesArray.length;
+
+    if (loadingEl) loadingEl.style.display = 'none';
+    const stepImport = document.getElementById('error-report-step-import');
+    const stepResults = document.getElementById('error-report-step-results');
+    const printBtn = document.getElementById('btn-print-report');
+
+    if (stepImport) stepImport.style.display = 'none';
+    if (stepResults) stepResults.style.display = 'block';
+    if (printBtn) printBtn.style.display = 'inline-block';
+}
+
+function printErrorReport() {
+    window.print();
+}
+
+window.openErrorReportModal = openErrorReportModal;
+window.resetErrorReportImport = resetErrorReportImport;
+window.handleErrorReportFileSelect = handleErrorReportFileSelect;
+window.runErrorReportAudit = runErrorReportAudit;
+window.printErrorReport = printErrorReport;
