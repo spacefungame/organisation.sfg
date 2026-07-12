@@ -157,18 +157,17 @@
         <section id="view-complet" class="view-section">
             <div class="view-header">
                 <div>
-                    <h2>📋 Planning Complet (Synchronisation Qweekle)</h2>
-                    <p class="view-subtitle" id="subtitle-complet">Affichage de toutes les réservations et activités de la journée</p>
+                    <h2 id="title-complet">Planning complet</h2>
+                    <p class="view-subtitle" id="subtitle-complet" style="display: none;"></p>
                 </div>
                 <div style="display: flex; gap: 12px; align-items: center;">
                     <button type="button" id="btn-sync-qweekle" class="btn-sync" onclick="syncQweekleReservations()">⚡ Synchroniser API Qweekle</button>
-                    <button type="button" class="btn-add" onclick="openEventModal()">+ Ajouter une activité</button>
                 </div>
             </div>
 
             <!-- Encart d'état de l'API Qweekle & Filtres de Catégories -->
             <div class="qweekle-toolbar">
-                <div class="qweekle-api-status" id="qweekle-status-badge">
+                <div class="qweekle-api-status" id="qweekle-status-badge" style="display: none;">
                     <span class="qweekle-status-icon">🟢</span>
                     <span><strong>API Qweekle Connectée</strong> (Clé : <code>a712eb...7d84</code>) | Affichage détaillé de toutes les occurrences</span>
                 </div>

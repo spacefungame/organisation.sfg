@@ -585,6 +585,7 @@ let currentQweekleCategoryFilter = "all";
 function renderPlanningComplet(filterCategory = currentQweekleCategoryFilter) {
     currentQweekleCategoryFilter = filterCategory;
     const container = document.getElementById("qweekle-reservations-container");
+    const titleComplet = document.getElementById("title-complet");
     const subtitle = document.getElementById("subtitle-complet");
     if (!container) return;
 
@@ -592,6 +593,13 @@ function renderPlanningComplet(filterCategory = currentQweekleCategoryFilter) {
     const parts = appState.currentDate.split("-");
     const d = new Date(parts[0], parts[1] - 1, parts[2]);
     const formattedDate = `${DAYS_FR[d.getDay()]} ${d.getDate()} ${MONTHS_FR[d.getMonth()]} ${parts[0]}`;
+
+    if (titleComplet) {
+        titleComplet.textContent = `Planning complet - ${formattedDate}`;
+    }
+    if (subtitle) {
+        subtitle.style.display = "none";
+    }
 
     // Récupérer toutes les réservations Qweekle pour cette date
     let reservations = appState.getQweekleReservationsForDate(appState.currentDate);
@@ -606,10 +614,6 @@ function renderPlanningComplet(filterCategory = currentQweekleCategoryFilter) {
     // Filtrage par catégorie
     if (filterCategory !== "all") {
         reservations = reservations.filter(res => res.categories && res.categories.includes(filterCategory));
-    }
-
-    if (subtitle) {
-        subtitle.textContent = `Planning Qweekle du ${formattedDate} (${reservations.length} dossier${reservations.length > 1 ? 's' : ''} affiché${reservations.length > 1 ? 's' : ''})`;
     }
 
     // Mettre à jour l'état visuel des boutons de filtres
@@ -816,16 +820,7 @@ async function syncQweekleReservations(silent = false) {
     }
 
     if (badge) {
-        if (result.status === "success" && result.source === "supabase") {
-            badge.innerHTML = `<span class="qweekle-status-icon">🟢</span><span><strong>Base de Production Live (Webhooks Qweekle)</strong> — ${result.data.length} dossier(s) en direct | Clé API : <code>a712eb...7d84</code></span>`;
-            badge.style.borderColor = "var(--accent-success)";
-        } else if (result.status === "success") {
-            badge.innerHTML = `<span class="qweekle-status-icon">🟢</span><span><strong>Synchronisé à l'instant via Qweekle API</strong> (${result.data.length} dossier(s)) | Clé active : <code>a712eb...7d84</code></span>`;
-            badge.style.borderColor = "var(--accent-success)";
-        } else {
-            badge.innerHTML = `<span class="qweekle-status-icon">🟡</span><span><strong>API Qweekle (Mode Démo / Hors-Ligne)</strong> - Affichage détaillé complet synchronisé | Clé : <code>a712eb...7d84</code></span>`;
-            badge.style.borderColor = "#C86D3B";
-        }
+        badge.style.display = "none";
     }
 
     // Ré-afficher dès que la synchro Qweekle/Supabase est terminée
