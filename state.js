@@ -310,8 +310,18 @@ class AppStateManager {
             const heureArrivee = earliestDate.toLocaleTimeString([], { hour: '2-digit', minute: '2-digit' });
             const heureDepart = latestDate.toLocaleTimeString([], { hour: '2-digit', minute: '2-digit' });
 
-            // 3. Nombre de personnes
-            const nbPersonnes = Math.max(...group.map(a => Number(a.qty) || 0), 1);
+            // 3. Nombre de personnes (en priorité la somme des activités d'accueil / arrivées, sinon le max)
+            const arrivGroup = group.filter(a => 
+                (a.label || a.raw_payload?.order_item?.label || "").toLowerCase().includes("accueil") ||
+                (a.zone || a.raw_payload?.order_item?.zone || "").toLowerCase().includes("arrivées")
+            );
+            let nbPersonnes = 0;
+            if (arrivGroup.length > 0) {
+                nbPersonnes = arrivGroup.reduce((sum, a) => sum + (Number(a.qty) || Number(a.raw_payload?.client?.qty) || Number(a.raw_payload?.qty) || 0), 0);
+            }
+            if (!nbPersonnes || isNaN(nbPersonnes) || nbPersonnes <= 0) {
+                nbPersonnes = Math.max(...group.map(a => Number(a.qty) || Number(a.raw_payload?.client?.qty) || Number(a.raw_payload?.qty) || 0), 1);
+            }
 
             // 4. Activités détaillées (si plusieurs occurrences, on les affiche toutes)
             const activites = group.map(act => {
@@ -564,7 +574,18 @@ class AppStateManager {
                     const hArr = firstAct.heureDebut || booking.heureArrivee;
                     const hDep = lastAct.heureFin || booking.heureDepart;
 
-                    const sessNbPers = Math.max(...sessActs.map(a => Number(a.nbPersonnes) || 0), Number(booking.nbPersonnes) || 1);
+                    const arrivActs = sessActs.filter(a => 
+                        (a.nom || "").toLowerCase().includes("accueil") || 
+                        (a.zone || "").toLowerCase().includes("arrivées") ||
+                        (a.type || "").toLowerCase().includes("accueil")
+                    );
+                    let sessNbPers = 0;
+                    if (arrivActs.length > 0) {
+                        sessNbPers = arrivActs.reduce((sum, a) => sum + (Number(a.nbPersonnes) || Number(a.qty) || 0), 0);
+                    }
+                    if (!sessNbPers || isNaN(sessNbPers) || sessNbPers <= 0) {
+                        sessNbPers = Math.max(...sessActs.map(a => Number(a.nbPersonnes) || Number(a.qty) || 0), 1);
+                    }
                     const sessionPack = this.computePackLabelFromActivities(sessActs, booking.nomPack);
 
                     splitList.push({
@@ -739,6 +760,24 @@ class AppStateManager {
             item.activites = this.groupSimultaneousActivities(item.activites, item.nbPersonnes);
             if (item.categories && item.categories.includes("anniversaire") && !item.enfantAnniversaire) {
                 item.enfantAnniversaire = { prenom: "???", age: "???", dateNaissance: null, sousCompteId: null };
+            }
+
+            // Mettre à jour l'effectif global (case de gauche) pour qu'il corresponde exactement à la somme des arrivées (Accueil / Arrivées) s'il y en a
+            const arrivActs = (item.activites || []).filter(a => 
+                (a.nom || "").toLowerCase().includes("accueil") || 
+                (a.zone || "").toLowerCase().includes("arrivées") ||
+                (a.type || "").toLowerCase().includes("accueil")
+            );
+            if (arrivActs.length > 0) {
+                const totalArrivees = arrivActs.reduce((sum, a) => sum + (Number(a.nbPersonnes) || 0), 0);
+                if (totalArrivees > 0) {
+                    item.nbPersonnes = totalArrivees;
+                }
+            } else if (item.activites && item.activites.length > 0) {
+                const maxActPers = Math.max(...item.activites.map(a => Number(a.nbPersonnes) || 0));
+                if (maxActPers > 0) {
+                    item.nbPersonnes = maxActPers;
+                }
             }
         });
 
