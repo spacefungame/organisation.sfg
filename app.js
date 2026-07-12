@@ -507,12 +507,12 @@ function renderPlanningComplet(filterCategory = currentQweekleCategoryFilter) {
                             <span>▶ ${act.nom}</span>
                             <span class="activity-time-pill">⏰ ${act.heureDebut} ➔ ${act.heureFin}</span>
                         </div>
-                        <div style="font-size: 0.85rem; color: var(--text-muted);">📍 Zone / Arène : <strong>${act.zone || "Salle de jeu"}</strong></div>
+                        <div style="font-size: 0.78rem; color: var(--text-muted);">📍 Zone / Arène : <strong>${act.zone || "Salle de jeu"}</strong></div>
                     </div>
                 `;
             });
         } else {
-            activitesHtml = `<div style="color: var(--text-muted); font-style: italic; font-size: 0.9rem;">Détail des activités par créneau non spécifié</div>`;
+            activitesHtml = `<div style="color: var(--text-muted); font-style: italic; font-size: 0.82rem;">Détail des activités par créneau non spécifié</div>`;
         }
 
         // Génération de la liste des options et produits supplémentaires
@@ -524,13 +524,13 @@ function renderPlanningComplet(filterCategory = currentQweekleCategoryFilter) {
             });
             optionsHtml += `</ul>`;
         } else {
-            optionsHtml = `<div style="color: var(--text-muted); font-style: italic; font-size: 0.9rem;">Aucune option supplémentaire choisie</div>`;
+            optionsHtml = `<div style="color: var(--text-muted); font-style: italic; font-size: 0.82rem;">Aucune option supplémentaire choisie</div>`;
         }
 
         card.innerHTML = `
             <div class="qweekle-card-header">
                 <div class="qweekle-badges-group">
-                    <span style="font-weight: 700; color: var(--text-main); margin-right: 6px;">🏷️ #${res.id}</span>
+                    <span style="font-weight: 700; font-size: 0.8rem; color: var(--text-main); margin-right: 4px;">🏷️ #${res.id}</span>
                     ${badgesHtml}
                 </div>
                 <div class="qweekle-time-badge">
@@ -545,11 +545,11 @@ function renderPlanningComplet(filterCategory = currentQweekleCategoryFilter) {
                     <div class="qweekle-column-title">👤 Client & Groupe</div>
                     <div class="client-main-name">${res.nom} ${res.prenom}</div>
                     ${res.societe ? `<div class="client-detail-row" style="font-weight: 600; color: var(--accent-secondary);">🏢 ${res.societe}</div>` : ''}
-                    <div class="client-detail-row">👥 Nombre de personnes : <strong style="font-size: 1.1rem; margin-left: 4px;">${res.nbPersonnes} personne${res.nbPersonnes > 1 ? 's' : ''}</strong></div>
+                    <div class="client-detail-row">👥 Nombre de personnes : <strong style="font-size: 0.92rem; margin-left: 4px;">${res.nbPersonnes} personne${res.nbPersonnes > 1 ? 's' : ''}</strong></div>
                     <div class="client-detail-row">📌 Type : <strong>${res.typeActivite}</strong></div>
                     
                     <div class="pack-highlight">
-                        🎁 Pack choisi : <strong style="display: block; margin-top: 2px;">${res.nomPack}</strong>
+                        🎁 Pack choisi : <strong style="display: block; margin-top: 1px;">${res.nomPack}</strong>
                     </div>
 
                     ${res.enfantAnniversaire ? `

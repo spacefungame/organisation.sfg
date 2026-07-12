@@ -830,13 +830,13 @@ body {
 .qweekle-reservations-list {
     display: flex;
     flex-direction: column;
-    gap: 18px;
+    gap: 10px;
 }
 
 .qweekle-reservation-card {
     background-color: var(--bg-card);
-    border: 2px solid var(--border-color);
-    border-radius: var(--radius-lg);
+    border: 1.5px solid var(--border-color);
+    border-radius: var(--radius-md);
     overflow: hidden;
     box-shadow: var(--shadow-sm);
     transition: transform 0.2s, box-shadow 0.2s;
@@ -848,116 +848,120 @@ body {
 
 .qweekle-card-header {
     background-color: var(--bg-secondary);
-    padding: 14px 20px;
-    border-bottom: 2px solid var(--border-color);
+    padding: 8px 14px;
+    border-bottom: 1.5px solid var(--border-color);
     display: flex;
     justify-content: space-between;
     align-items: center;
     flex-wrap: wrap;
-    gap: 12px;
+    gap: 8px;
 }
 
 .qweekle-badges-group {
     display: flex;
     flex-wrap: wrap;
-    gap: 8px;
+    align-items: center;
+    gap: 6px;
 }
 
 .qweekle-badge {
     display: inline-flex;
     align-items: center;
-    gap: 6px;
-    padding: 5px 12px;
-    border-radius: 14px;
+    gap: 4px;
+    padding: 3px 9px;
+    border-radius: 12px;
     font-weight: 700;
-    font-size: 0.85rem;
-    border: 1.5px solid;
+    font-size: 0.76rem;
+    border: 1px solid;
     text-transform: uppercase;
-    letter-spacing: 0.5px;
+    letter-spacing: 0.3px;
 }
 
 .qweekle-time-badge {
     background-color: var(--bg-main);
-    border: 2px solid var(--accent-primary);
+    border: 1.5px solid var(--accent-primary);
     color: var(--text-main);
-    padding: 6px 14px;
+    padding: 4px 10px;
     border-radius: var(--radius-sm);
     font-weight: 700;
-    font-size: 0.95rem;
+    font-size: 0.85rem;
     display: flex;
     align-items: center;
-    gap: 12px;
+    gap: 8px;
 }
 
 .qweekle-card-body {
-    padding: 20px;
+    padding: 12px 14px;
     display: grid;
-    grid-template-columns: 1fr 1.3fr 1.2fr;
-    gap: 20px;
+    grid-template-columns: 1.1fr 1.4fr 1.1fr;
+    gap: 12px;
 }
 
 @media (max-width: 1024px) {
     .qweekle-card-body {
         grid-template-columns: 1fr;
+        gap: 10px;
     }
 }
 
 .qweekle-column {
     background-color: var(--bg-main);
-    border: 1.5px solid var(--border-light);
-    border-radius: var(--radius-md);
-    padding: 16px;
+    border: 1px solid var(--border-light);
+    border-radius: var(--radius-sm);
+    padding: 10px 12px;
 }
 
 .qweekle-column-title {
-    font-size: 0.9rem;
+    font-size: 0.78rem;
     text-transform: uppercase;
     color: var(--text-muted);
     font-weight: 700;
-    margin-bottom: 12px;
-    border-bottom: 1.5px solid var(--border-color);
-    padding-bottom: 6px;
+    margin-bottom: 8px;
+    border-bottom: 1px solid var(--border-color);
+    padding-bottom: 4px;
     display: flex;
     align-items: center;
-    gap: 8px;
+    gap: 6px;
 }
 
 .client-main-name {
-    font-size: 1.25rem;
+    font-size: 1.05rem;
     font-weight: 700;
     color: var(--text-main);
-    margin-bottom: 8px;
+    margin-bottom: 5px;
+    line-height: 1.25;
 }
 
 .client-detail-row {
-    font-size: 0.95rem;
+    font-size: 0.82rem;
     color: var(--text-main);
-    margin-bottom: 6px;
+    margin-bottom: 4px;
     display: flex;
     align-items: center;
-    gap: 8px;
+    gap: 6px;
 }
 
 .pack-highlight {
     background-color: var(--bg-secondary);
     border: 1px solid var(--border-color);
-    padding: 8px 12px;
+    padding: 5px 8px;
     border-radius: var(--radius-sm);
     font-weight: 600;
+    font-size: 0.82rem;
     color: var(--accent-primary);
-    margin-top: 10px;
+    margin-top: 6px;
 }
 
 .activity-item-card {
     background-color: var(--bg-card);
-    border: 1.5px solid var(--border-color);
-    border-left: 5px solid var(--accent-primary);
+    border: 1px solid var(--border-color);
+    border-left: 3.5px solid var(--accent-primary);
     border-radius: var(--radius-sm);
-    padding: 10px 12px;
-    margin-bottom: 10px;
+    padding: 6px 10px;
+    margin-bottom: 6px;
     display: flex;
     flex-direction: column;
-    gap: 4px;
+    gap: 2px;
 }
 
 .activity-item-header {
@@ -965,15 +969,16 @@ body {
     justify-content: space-between;
     align-items: center;
     font-weight: 700;
+    font-size: 0.85rem;
     color: var(--text-main);
 }
 
 .activity-time-pill {
     background-color: var(--bg-secondary);
     border: 1px solid var(--border-color);
-    padding: 2px 8px;
-    border-radius: 6px;
-    font-size: 0.82rem;
+    padding: 1px 6px;
+    border-radius: 4px;
+    font-size: 0.76rem;
     color: var(--accent-primary);
 }
 
@@ -981,20 +986,20 @@ body {
     list-style: none;
     display: flex;
     flex-direction: column;
-    gap: 8px;
+    gap: 5px;
 }
 
 .option-pill {
     background-color: var(--bg-card);
     border: 1px solid var(--border-color);
-    padding: 8px 12px;
+    padding: 5px 10px;
     border-radius: var(--radius-sm);
-    font-size: 0.9rem;
+    font-size: 0.82rem;
     font-weight: 600;
     color: var(--text-main);
     display: flex;
     align-items: center;
-    gap: 8px;
+    gap: 6px;
 }
 
 /* Couleurs des Badges de Catégories (Sans Gris) */
@@ -1044,22 +1049,22 @@ body {
 .birthday-child-banner {
     display: flex;
     align-items: center;
-    gap: 12px;
+    gap: 8px;
     background: linear-gradient(135deg, #FFF0F3 0%, #FDF0D5 100%);
-    border: 2px solid #FF85A1;
-    border-radius: var(--radius-md);
-    padding: 12px 14px;
-    margin: 10px 0;
-    box-shadow: 0 3px 10px rgba(255, 133, 161, 0.15);
+    border: 1.5px solid #FF85A1;
+    border-radius: var(--radius-sm);
+    padding: 6px 10px;
+    margin: 6px 0;
+    box-shadow: 0 2px 6px rgba(255, 133, 161, 0.12);
 }
 
 .birthday-cake-icon {
-    font-size: 2rem;
+    font-size: 1.3rem;
     background: #FFFFFF;
-    border: 2px solid #FF85A1;
+    border: 1.5px solid #FF85A1;
     border-radius: 50%;
-    width: 44px;
-    height: 44px;
+    width: 32px;
+    height: 32px;
     display: flex;
     align-items: center;
     justify-content: center;
@@ -1071,15 +1076,15 @@ body {
 }
 
 .birthday-child-title {
-    font-size: 0.82rem;
+    font-size: 0.74rem;
     font-weight: 700;
     text-transform: uppercase;
-    letter-spacing: 0.5px;
+    letter-spacing: 0.3px;
     color: #800F2F;
 }
 
 .birthday-child-name {
-    font-size: 1.08rem;
+    font-size: 0.94rem;
     color: #5E3A1C;
-    margin-top: 2px;
+    margin-top: 1px;
 }
