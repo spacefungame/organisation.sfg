@@ -320,6 +320,7 @@ function getDetailedDateStats(dateStr) {
     let annivRes = 0, annivPers = 0;
     let asblRes = 0, asblPers = 0;
     let teamRes = 0, teamPers = 0;
+    let teamGameRes = 0, teamGamePers = 0;
     let laserRes = 0, laserPers = 0;
     let quizRes = 0, quizPers = 0;
 
@@ -346,10 +347,16 @@ function getDetailedDateStats(dateStr) {
             asblPers += pers;
         }
 
-        // Team building / Entreprise
-        if (cats.includes("team building") || /\b(team\s+building|séminaire|entreprise|collaborateur|teambuilding)\b/i.test(fullTxt) || actType.includes("team game") || cats.includes("team")) {
+        // Team building / Séminaire d'entreprise
+        if (cats.includes("team building") || /\b(team\s+building|séminaire|séminaires|entreprise|collaborateur|teambuilding)\b/i.test(fullTxt)) {
             teamRes++;
             teamPers += pers;
+        }
+
+        // Team Game (Sensas, Prison Island, Action Game, sessions Team Game)
+        if (cats.includes("team game") || actType.includes("team game") || pack.includes("team game") || pack.includes("prison") || pack.includes("sensas") || actType.includes("prison") || actType.includes("sensas") || (r.activites && r.activites.some(a => (a.nom || "").toLowerCase().includes("team") || (a.nom || "").toLowerCase().includes("prison") || (a.nom || "").toLowerCase().includes("sensas")))) {
+            teamGameRes++;
+            teamGamePers += pers;
         }
 
         // Laser Game
@@ -386,9 +393,13 @@ function getDetailedDateStats(dateStr) {
             asblRes++;
             asblPers += pers;
         }
-        if (evType === "team" || /\b(team\s+building|séminaire|entreprise|collaborateur|teambuilding)\b/i.test(fullTxt)) {
+        if (/\b(team\s+building|séminaire|entreprise|collaborateur|teambuilding)\b/i.test(fullTxt)) {
             teamRes++;
             teamPers += pers;
+        }
+        if (evType === "team" || fullTxt.includes("team game") || fullTxt.includes("prison") || fullTxt.includes("sensas")) {
+            teamGameRes++;
+            teamGamePers += pers;
         }
         if (evType === "laser" || fullTxt.includes("laser")) {
             laserRes++;
@@ -405,6 +416,7 @@ function getDetailedDateStats(dateStr) {
         annivRes, annivPers,
         asblRes, asblPers,
         teamRes, teamPers,
+        teamGameRes, teamGamePers,
         laserRes, laserPers,
         quizRes, quizPers
     };
@@ -458,6 +470,11 @@ function renderHomeDashboard() {
             <div class="stat-card-title"><span>🤝</span> <span>TEAM BUILDING</span></div>
             <div class="stat-card-number" style="color: #1A4971;">${stats.teamRes} <span style="font-size: 0.7rem; font-weight: 600; color: #4299E1;">rés.</span></div>
             <div class="stat-card-pill" style="background: #E8F4F8; color: #1A4971;">👥 ${stats.teamPers} pers.</div>
+        </div>
+        <div class="stat-card-compact" style="border-color: #DD6B20;">
+            <div class="stat-card-title"><span>🏆</span> <span>TEAM GAME</span></div>
+            <div class="stat-card-number" style="color: #7B341E;">${stats.teamGameRes} <span style="font-size: 0.7rem; font-weight: 600; color: #C05621;">rés.</span></div>
+            <div class="stat-card-pill" style="background: #FFFAF0; color: #7B341E;">👥 ${stats.teamGamePers} pers.</div>
         </div>
         <div class="stat-card-compact" style="border-color: #D9534F;">
             <div class="stat-card-title"><span>🔫</span> <span>LASER GAME</span></div>
