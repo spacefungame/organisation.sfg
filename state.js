@@ -648,13 +648,12 @@ class AppStateManager {
                         (a.zone || "").toLowerCase().includes("arrivées") ||
                         (a.type || "").toLowerCase().includes("accueil")
                     );
-                    let sessNbPers = 0;
+                    let totalArrivees = 0;
                     if (arrivActs.length > 0) {
-                        sessNbPers = arrivActs.reduce((sum, a) => sum + (Number(a.nbPersonnes) || Number(a.qty) || 0), 0);
+                        totalArrivees = arrivActs.reduce((sum, a) => sum + (Number(a.nbPersonnes) || Number(a.qty) || 0), 0);
                     }
-                    if (!sessNbPers || isNaN(sessNbPers) || sessNbPers <= 0) {
-                        sessNbPers = Math.max(...sessActs.map(a => Number(a.nbPersonnes) || Number(a.qty) || 0), 1);
-                    }
+                    const maxActPers = Math.max(...sessActs.map(a => Number(a.nbPersonnes) || Number(a.qty) || 0), 1);
+                    const sessNbPers = Math.max(totalArrivees, maxActPers);
                     const sessionPack = this.computePackLabelFromActivities(sessActs, booking.nomPack);
 
                     splitList.push({
@@ -831,22 +830,17 @@ class AppStateManager {
                 item.enfantAnniversaire = { prenom: "???", age: "???", dateNaissance: null, sousCompteId: null };
             }
 
-            // Mettre à jour l'effectif global (case de gauche) pour qu'il corresponde exactement à la somme des arrivées (Accueil / Arrivées) s'il y en a
+            // Mettre à jour l'effectif global (case de gauche) pour qu'il corresponde au maximum entre la somme des arrivées et l'effectif des activités
             const arrivActs = (item.activites || []).filter(a => 
                 (a.nom || "").toLowerCase().includes("accueil") || 
                 (a.zone || "").toLowerCase().includes("arrivées") ||
                 (a.type || "").toLowerCase().includes("accueil")
             );
-            if (arrivActs.length > 0) {
-                const totalArrivees = arrivActs.reduce((sum, a) => sum + (Number(a.nbPersonnes) || 0), 0);
-                if (totalArrivees > 0) {
-                    item.nbPersonnes = totalArrivees;
-                }
-            } else if (item.activites && item.activites.length > 0) {
-                const maxActPers = Math.max(...item.activites.map(a => Number(a.nbPersonnes) || 0));
-                if (maxActPers > 0) {
-                    item.nbPersonnes = maxActPers;
-                }
+            const totalArrivees = arrivActs.reduce((sum, a) => sum + (Number(a.nbPersonnes) || 0), 0);
+            const maxActPers = (item.activites && item.activites.length > 0) ? Math.max(...item.activites.map(a => Number(a.nbPersonnes) || 0)) : 0;
+            const finalNb = Math.max(totalArrivees, maxActPers, Number(item.nbPersonnes) || 1);
+            if (finalNb > 0) {
+                item.nbPersonnes = finalNb;
             }
         });
 
