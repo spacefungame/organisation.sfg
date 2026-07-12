@@ -513,11 +513,14 @@ function renderPlanningComplet(filterCategory = currentQweekleCategoryFilter) {
             res.activites.forEach(act => {
                 activitesHtml += `
                     <div class="activity-item-card">
-                        <div style="display: flex; align-items: center; gap: 6px; flex: 1; min-width: 140px;">
+                        <div style="display: flex; align-items: center; gap: 6px; flex: 1; min-width: 140px; flex-wrap: wrap;">
                             <span class="activity-time-pill">⏰ ${act.heureDebut} ➔ ${act.heureFin}</span>
                             <span style="font-weight: 700; font-size: 0.76rem; color: var(--text-main);">${act.nom}</span>
                         </div>
-                        <span style="font-size: 0.68rem; color: var(--text-muted); background: var(--bg-main); padding: 1px 5px; border-radius: 3px; border: 1px solid var(--border-light); white-space: nowrap;">📍 ${act.zone || "Salle de jeu"}</span>
+                        <div style="display: flex; align-items: center; gap: 4px; white-space: nowrap;">
+                            <span style="font-size: 0.72rem; font-weight: 700; color: var(--accent-primary); background: var(--bg-main); padding: 1px 6px; border-radius: 3px; border: 1px solid var(--accent-primary);" title="Nombre de personnes pour ce créneau">👥 ${act.nbPersonnes || res.nbPersonnes || 1} pers.</span>
+                            <span style="font-size: 0.68rem; color: var(--text-muted); background: var(--bg-main); padding: 1px 5px; border-radius: 3px; border: 1px solid var(--border-light);">📍 ${act.zone || "Salle de jeu"}</span>
+                        </div>
                     </div>
                 `;
             });

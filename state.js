@@ -314,11 +314,13 @@ class AppStateManager {
             const activites = group.map(act => {
                 const s = new Date(act.start_at);
                 const e = act.end_at ? new Date(act.end_at) : new Date(s.getTime() + (Number(act.duration) || 60) * 60000);
+                const actQty = Number(act.qty) || Number(act.raw_payload?.client?.qty) || Number(act.raw_payload?.qty) || nbPersonnes || 1;
                 return {
                     heureDebut: s.toLocaleTimeString([], { hour: '2-digit', minute: '2-digit' }),
                     heureFin: e.toLocaleTimeString([], { hour: '2-digit', minute: '2-digit' }),
                     nom: act.label || "Activité Qweekle",
-                    zone: act.location || act.category || "Zone Générale"
+                    zone: act.location || act.category || "Zone Générale",
+                    nbPersonnes: actQty
                 };
             });
 
@@ -573,13 +575,15 @@ class AppStateManager {
                 const existingActs = [...(match.activites || [])];
                 if (Array.isArray(booking.activites)) {
                     booking.activites.forEach(newAct => {
-                        const isDup = existingActs.some(ea => 
+                        const existingMatch = existingActs.find(ea => 
                             ea.heureDebut === newAct.heureDebut &&
                             ea.heureFin === newAct.heureFin &&
                             (ea.nom || "").trim().toLowerCase() === (newAct.nom || "").trim().toLowerCase()
                         );
-                        if (!isDup) {
+                        if (!existingMatch) {
                             existingActs.push({ ...newAct });
+                        } else {
+                            existingMatch.nbPersonnes = (Number(existingMatch.nbPersonnes) || 0) + (Number(newAct.nbPersonnes) || 0);
                         }
                     });
                 }
@@ -595,13 +599,13 @@ class AppStateManager {
 
         // Regrouper les activités simultanées (ex: adultes et enfants jouant ensemble sur le même créneau)
         merged.forEach(item => {
-            item.activites = this.groupSimultaneousActivities(item.activites);
+            item.activites = this.groupSimultaneousActivities(item.activites, item.nbPersonnes);
         });
 
         return merged;
     }
 
-    groupSimultaneousActivities(activites) {
+    groupSimultaneousActivities(activites, fallbackQty = 1) {
         if (!activites || !activites.length) return [];
 
         const groupedMap = new Map();
@@ -617,7 +621,8 @@ class AppStateManager {
                     heureDebut: hDebut,
                     heureFin: hFin,
                     zone: zone,
-                    noms: [(act.nom || "").trim()]
+                    noms: [(act.nom || "").trim()],
+                    nbPersonnes: Number(act.nbPersonnes) || Number(fallbackQty) || 1
                 });
             } else {
                 const existing = groupedMap.get(key);
@@ -625,6 +630,7 @@ class AppStateManager {
                 if (!existing.noms.includes(cleanNom)) {
                     existing.noms.push(cleanNom);
                 }
+                existing.nbPersonnes = (Number(existing.nbPersonnes) || 0) + (Number(act.nbPersonnes) || Number(fallbackQty) || 1);
             }
         });
 
@@ -649,7 +655,8 @@ class AppStateManager {
                 heureDebut: item.heureDebut,
                 heureFin: item.heureFin,
                 zone: item.zone,
-                nom: combinedNom
+                nom: combinedNom,
+                nbPersonnes: item.nbPersonnes
             });
         });
 
@@ -753,7 +760,8 @@ class AppStateManager {
                 heureDebut: hDebut,
                 heureFin: hFin,
                 nom: actName,
-                zone: typeof actZone === "string" ? actZone : (actZone.label || "Salle / Arène")
+                zone: typeof actZone === "string" ? actZone : (actZone.label || "Salle / Arène"),
+                nbPersonnes: Number(item.qty) || Number(item.quantity) || Number(item.client?.qty) || Number(bookingsMap[orderId].nbPersonnes) || 1
             });
 
             // Extraire les options/produits supplémentaires si présents
