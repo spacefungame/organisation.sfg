@@ -452,7 +452,7 @@ function renderHomeDashboard() {
 
     listEl.innerHTML = `
         <div class="stat-card-compact" style="border-color: var(--border-color);">
-            <div class="stat-card-title"><span>📊</span> <span>TOTAL DU JOUR</span></div>
+            <div class="stat-card-title"><span>📊</span> <span>TOTAL JOUR</span></div>
             <div class="stat-card-number">${stats.totalReservations} <span style="font-size: 0.7rem; font-weight: 600; color: var(--text-muted);">rés.</span></div>
             <div class="stat-card-pill" style="background: var(--bg-card); color: var(--text-main);">👥 ${stats.totalPersonnes} pers.</div>
         </div>
@@ -462,12 +462,12 @@ function renderHomeDashboard() {
             <div class="stat-card-pill" style="background: #FDF0D5; color: #5E3A1C;">👥 ${stats.annivPers} pers.</div>
         </div>
         <div class="stat-card-compact" style="border-color: #2F855A;">
-            <div class="stat-card-title"><span>🏛️</span> <span>ASBL / ÉCOLES</span></div>
+            <div class="stat-card-title"><span>🏛️</span> <span>ASBL/ÉCOLES</span></div>
             <div class="stat-card-number" style="color: #1C4532;">${stats.asblRes} <span style="font-size: 0.7rem; font-weight: 600; color: #38A169;">rés.</span></div>
             <div class="stat-card-pill" style="background: #E6FFFA; color: #234E52;">👥 ${stats.asblPers} pers.</div>
         </div>
         <div class="stat-card-compact" style="border-color: #3182CE;">
-            <div class="stat-card-title"><span>🤝</span> <span>TEAM BUILDING</span></div>
+            <div class="stat-card-title"><span>🤝</span> <span>TEAM BUILD.</span></div>
             <div class="stat-card-number" style="color: #1A4971;">${stats.teamRes} <span style="font-size: 0.7rem; font-weight: 600; color: #4299E1;">rés.</span></div>
             <div class="stat-card-pill" style="background: #E8F4F8; color: #1A4971;">👥 ${stats.teamPers} pers.</div>
         </div>

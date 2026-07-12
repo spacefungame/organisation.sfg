@@ -466,15 +466,27 @@ body {
     color: var(--text-main);
 }
 
-/* Grille ultra-compacte des cartes de statistiques Accueil */
+/* Grille ultra-compacte des cartes de statistiques Accueil (7 colonnes sur 1 seule ligne) */
 #dashboard-summary-list {
     display: grid;
-    grid-template-columns: repeat(auto-fit, minmax(130px, 1fr));
-    gap: 8px;
+    grid-template-columns: repeat(7, 1fr);
+    gap: 6px;
+}
+
+@media (max-width: 1300px) {
+    #dashboard-summary-list {
+        grid-template-columns: repeat(4, 1fr);
+    }
+}
+
+@media (max-width: 768px) {
+    #dashboard-summary-list {
+        grid-template-columns: repeat(2, 1fr);
+    }
 }
 
 .stat-card-compact {
-    padding: 8px 10px;
+    padding: 6px 3px;
     border-radius: 6px;
     border: 1.5px solid var(--border-color);
     background: var(--bg-main);
@@ -482,9 +494,10 @@ body {
     flex-direction: column;
     justify-content: center;
     align-items: center;
-    min-height: 64px;
+    min-height: 56px;
     box-shadow: var(--shadow-sm);
     transition: transform 0.15s;
+    overflow: hidden;
 }
 
 .stat-card-compact:hover {
@@ -492,30 +505,35 @@ body {
 }
 
 .stat-card-title {
-    font-size: 0.72rem;
+    font-size: 0.64rem;
     font-weight: 700;
     color: var(--text-muted);
     text-transform: uppercase;
-    letter-spacing: 0.3px;
-    margin-bottom: 4px;
+    letter-spacing: 0.2px;
+    margin-bottom: 3px;
     display: flex;
     align-items: center;
-    gap: 4px;
+    justify-content: center;
+    gap: 3px;
+    white-space: nowrap;
+    width: 100%;
 }
 
 .stat-card-number {
-    font-size: 1.25rem;
+    font-size: 1.15rem;
     font-weight: 800;
     color: var(--text-main);
     line-height: 1.1;
+    white-space: nowrap;
 }
 
 .stat-card-pill {
-    font-size: 0.76rem;
+    font-size: 0.72rem;
     font-weight: 700;
-    padding: 1px 6px;
+    padding: 1px 5px;
     border-radius: 10px;
-    margin-top: 4px;
+    margin-top: 3px;
+    white-space: nowrap;
 }
 
 /* Encart Notes Manuelles Compact */
