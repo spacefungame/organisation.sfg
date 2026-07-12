@@ -180,10 +180,13 @@ class AppStateManager {
         // 1. Tenter en priorité la base de production Live (Webhooks Qweekle -> Supabase booking_activities)
         if (CONFIG.SUPABASE_URL && CONFIG.SUPABASE_KEY) {
             try {
+                const prevDate = new Date(dateStr);
+                prevDate.setDate(prevDate.getDate() - 1);
+                const prevDateStr = prevDate.toISOString().split("T")[0];
                 const nextDate = new Date(dateStr);
                 nextDate.setDate(nextDate.getDate() + 1);
                 const nextDateStr = nextDate.toISOString().split("T")[0];
-                const supaUrl = `${CONFIG.SUPABASE_URL}/rest/v1/booking_activities?select=*&start_at=gte.${dateStr}T00:00:00Z&start_at=lt.${nextDateStr}T23:59:59Z&order=order_id,pack_step.asc`;
+                const supaUrl = `${CONFIG.SUPABASE_URL}/rest/v1/booking_activities?select=*&start_at=gte.${prevDateStr}T12:00:00Z&start_at=lt.${nextDateStr}T23:59:59Z&order=order_id,pack_step.asc`;
                 
                 const response = await fetch(supaUrl, {
                     method: "GET",
