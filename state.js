@@ -242,15 +242,12 @@ class AppStateManager {
         }
 
         // 2. Tenter en direct via l'API REST officielle de Qweekle si disponible
-        if (CONFIG.QWEEKLE_API_KEY && CONFIG.QWEEKLE_API_URL) {
-            const url = `${CONFIG.QWEEKLE_API_URL}/bookings?filter[agenda.starts_between]=${dateStr}T00:00:00,${dateStr}T23:59:59&withOrder=true`;
+        if (CONFIG.QWEEKLE_API_TOKEN && CONFIG.QWEEKLE_API_BASE_URL) {
+            const url = `${CONFIG.QWEEKLE_API_BASE_URL}/bookings?filter[agenda.starts_between]=${dateStr}T00:00:00,${dateStr}T23:59:59&withOrder=true`;
             try {
                 const response = await fetch(url, {
                     method: "GET",
-                    headers: {
-                        "Authorization": `Bearer ${CONFIG.QWEEKLE_API_KEY}`,
-                        "Accept": "application/json"
-                    }
+                    headers: CONFIG.getQweekleHeaders()
                 });
 
                 if (response.ok) {
