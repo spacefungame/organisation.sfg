@@ -217,12 +217,18 @@ class AppStateManager {
                         Object.values(ordersMap).forEach(orderData => {
                             if (orderData && orderData.items) {
                                 orderData.items.forEach(item => {
+                                    const lbl = (item.label || item.product_name || item.name || "");
+                                    const lblLower = lbl.toLowerCase();
+                                    
+                                    // Ignorer les acomptes, déductions et frais divers qui ne sont pas des vrais produits/options
+                                    if (lblLower.includes("acompte") || lblLower.includes("déduction") || lblLower.includes("deduction") || item.type === "DEPOSIT" || item.type === "PAID_DEPOSIT") return;
+
                                     // Injecter comme une ligne factice
                                     rawBookings.push({
                                         id: item.id || `item_${Math.random()}`,
                                         order_item: { order_id: orderData.id },
                                         client_id: orderData.client_id,
-                                        activity: { label: item.label || item.product_name || item.name },
+                                        activity: { label: lbl },
                                         qty: item.qty,
                                         type: "PRODUCT"
                                     });
@@ -416,11 +422,18 @@ class AppStateManager {
                 }
             }
 
+            // 1.5 Séparer les activités principales des options pures
+            const mainActivities = group.filter(a => {
+                const typeRaw = (a.raw_payload?.type || a.type || "").toUpperCase();
+                return typeRaw !== "PRODUCT" && typeRaw !== "OPTION";
+            });
+            const activitiesForSchedule = mainActivities.length > 0 ? mainActivities : group;
+
             // 2. Plage horaire globale (arrivée et départ)
-            const earliestDate = new Date(group[0].start_at);
+            const earliestDate = new Date(activitiesForSchedule[0].start_at || activitiesForSchedule[0].created_at || Date.now());
             let maxEndMs = earliestDate.getTime();
-            group.forEach(act => {
-                const sMs = new Date(act.start_at).getTime();
+            activitiesForSchedule.forEach(act => {
+                const sMs = new Date(act.start_at || act.created_at || Date.now()).getTime();
                 const eMs = act.end_at ? new Date(act.end_at).getTime() : sMs + (Number(act.duration) || 60) * 60000;
                 if (eMs > maxEndMs) maxEndMs = eMs;
             });
@@ -442,9 +455,9 @@ class AppStateManager {
                 nbPersonnes = Math.max(...group.map(a => Number(a.qty) || Number(a.raw_payload?.client?.qty) || Number(a.raw_payload?.qty) || 0), 1);
             }
 
-            // 4. Activités détaillées (si plusieurs occurrences, on les affiche toutes)
-            const activites = group.map(act => {
-                const s = new Date(act.start_at);
+            // 4. Activités détaillées (seulement les activités, pas les produits injectés)
+            const activites = activitiesForSchedule.map(act => {
+                const s = new Date(act.start_at || act.created_at || Date.now());
                 const e = act.end_at ? new Date(act.end_at) : new Date(s.getTime() + (Number(act.duration) || 60) * 60000);
                 const actQty = Number(act.qty) || Number(act.raw_payload?.client?.qty) || Number(act.raw_payload?.qty) || nbPersonnes || 1;
                 return {
@@ -467,7 +480,6 @@ class AppStateManager {
                 }
             });
             if (orderPacks.size > 0) {
-                // Si on n'a trouvé qu'un seul label dans order_item mais que le groupe a plusieurs types d'activités distinctes (ex: Team Games et Laser Game), on enrichit
                 const distinctActTypes = new Set(group.map(a => (a.label || a.nom || "").replace(/▶\s*/g, '').trim()).filter(n => !n.toLowerCase().includes("accueil") && !n.toLowerCase().includes("table réservée")));
                 if (distinctActTypes.size > orderPacks.size && orderPacks.size === 1) {
                     nomPack = this.computePackLabelFromActivities(group, Array.from(orderPacks).join(" + "));
@@ -475,7 +487,6 @@ class AppStateManager {
                     nomPack = Array.from(orderPacks).join(" + ");
                 }
             } else {
-                // Tenter de prendre le label parent du panier si pas d'order_item spécifique
                 const parentOrderLabel = group[0]?.raw_payload?.order?.label || group[0]?.raw_payload?.order?.product_label || group[0]?.raw_payload?.order?.name || "";
                 nomPack = this.computePackLabelFromActivities(group, parentOrderLabel);
             }
@@ -484,12 +495,16 @@ class AppStateManager {
             const allTextForCats = `${nom} ${societe} ${nomPack} ${group.map(a => `${a.label || ''} ${a.category || ''} ${a.subcategory || ''} ${a.raw_payload?.client?.type || ''}`).join(" ")}`;
             const categories = this.detectQweekleCategories(nom, societe, nomPack, allTextForCats);
 
-            // 7. Options supplémentaires choisies (produits / gâteaux / options / articles de commande)
-            const options = [];
+            // 7. Options supplémentaires choisies (accumuler les quantités, ignorer les packs/activités)
+            const optionsMap = new Map();
             group.forEach(act => {
                 const catLower = (act.category || "").toLowerCase();
-                const lblLower = (act.label || "").toLowerCase();
-                const typeRaw = (act.raw_payload?.type || "").toUpperCase();
+                const lbl = (act.label || "").trim();
+                const lblLower = lbl.toLowerCase();
+                const typeRaw = (act.raw_payload?.type || act.type || "").toUpperCase();
+
+                // On ne met jamais en option une activité qui est déjà prévue à une heure précise (ex: table réservée)
+                const isRealActivity = act.start_at && !lblLower.includes("gâteau") && !lblLower.includes("gateau");
 
                 const isOptionKeyword = catLower.includes("option") || catLower.includes("produit") || catLower.includes("bar") ||
                     lblLower.includes("gâteau") || lblLower.includes("gateau") || lblLower.includes("kidibul") || 
@@ -499,22 +514,37 @@ class AppStateManager {
                     lblLower.includes("gouter") || lblLower.includes("boisson") || lblLower.includes("bière") || 
                     lblLower.includes("biere") || lblLower.includes("soda") || lblLower.includes("jeton") || 
                     lblLower.includes("gobelet") || lblLower.includes("pitch") || lblLower.includes("capri") || 
-                    lblLower.includes("café") || lblLower.includes("cafe") || lblLower.includes("table réservée") || 
-                    lblLower.includes("table reservee");
+                    lblLower.includes("café") || lblLower.includes("cafe");
 
-                if (typeRaw === "PRODUCT" || typeRaw === "OPTION" || isOptionKeyword || (!act.start_at && act.label)) {
-                    if (act.label && !options.includes(act.label)) options.push(act.label);
+                // Filtre anti-pack: ne pas afficher l'activité principale dans les options
+                const matchesNomPack = nomPack.toLowerCase().includes(lblLower) || lblLower.includes(nomPack.toLowerCase());
+                const isAlreadyActivity = activitiesForSchedule.some(mainAct => {
+                    const mainLbl = (mainAct.label || mainAct.nom || "").toLowerCase();
+                    return mainLbl === lblLower || (lblLower.includes("laser game") && mainLbl.includes("laser game")) || (lblLower.includes("quiz") && mainLbl.includes("quiz"));
+                });
+
+                if (!isRealActivity && !matchesNomPack && !isAlreadyActivity && (typeRaw === "PRODUCT" || typeRaw === "OPTION" || isOptionKeyword || (!act.start_at && act.label))) {
+                    if (lbl) {
+                        const existingQty = optionsMap.get(lbl) || 0;
+                        const itemQty = Number(act.qty) || 1;
+                        optionsMap.set(lbl, existingQty + itemQty);
+                    }
                 }
 
-                // Vérifier dans raw_payload si des options ou items de commande sont imbriqués
+                // Vérifier dans raw_payload si des options imbriquées sont présentes
                 if (act.raw_payload) {
                     const checkItems = (items) => {
                         if (Array.isArray(items)) {
                             items.forEach(oi => {
                                 const oiType = (oi.type || "").toUpperCase();
-                                const oiLabel = oi.label || oi.nom || "";
-                                if (oiLabel && (oiType === "PRODUCT" || oiType === "OPTION" || oi.category?.toLowerCase().includes("option") || oi.category?.toLowerCase().includes("produit") || !oi.start_at)) {
-                                    if (!options.includes(oiLabel)) options.push(oiLabel);
+                                const oiLabel = (oi.label || oi.nom || "").trim();
+                                const oiLower = oiLabel.toLowerCase();
+                                const oiMatchesPack = nomPack.toLowerCase().includes(oiLower) || oiLower.includes(nomPack.toLowerCase());
+                                
+                                if (oiLabel && !oiMatchesPack && (oiType === "PRODUCT" || oiType === "OPTION" || oi.category?.toLowerCase().includes("option") || oi.category?.toLowerCase().includes("produit") || !oi.start_at)) {
+                                    const exQty = optionsMap.get(oiLabel) || 0;
+                                    const oiQty = Number(oi.qty) || 1;
+                                    optionsMap.set(oiLabel, exQty + oiQty);
                                 }
                             });
                         }
@@ -526,6 +556,7 @@ class AppStateManager {
                     checkItems(act.raw_payload.products);
                 }
             });
+            const options = Array.from(optionsMap.entries()).map(([label, qty]) => `${qty > 1 ? qty + ' x ' : ''}${label}`);
 
             // 8. Sous-compte enfant anniversaire (si réservation anniversaire)
             let enfantAnniversaire = null;
