@@ -177,7 +177,112 @@ class AppStateManager {
             return { status: "fallback", data: this.getQweekleReservationsForDate(dateStr) };
         }
 
-        // 1. Tenter en priorité la base de production Live (Webhooks Qweekle -> Supabase booking_activities)
+        // 1. Tenter en direct via l'API REST officielle de Qweekle (Priorité 1 absolue maintenant qu'on a le token !)
+        if (CONFIG.QWEEKLE_API_TOKEN && CONFIG.QWEEKLE_API_BASE_URL) {
+            const url = `${CONFIG.QWEEKLE_API_BASE_URL}/bookings?filter[agenda.starts_between]=${dateStr}T00:00:00,${dateStr}T23:59:59&withOrder=true`;
+            try {
+                const response = await fetch(url, {
+                    method: "GET",
+                    headers: CONFIG.getQweekleHeaders()
+                });
+
+                if (response.ok) {
+                    const json = await response.json();
+                    const rawBookings = json.data || [];
+                    
+                    // --- NOUVEAU : Récupérer les infos clients et les items supplémentaires ---
+                    const orderIds = Array.from(new Set(rawBookings.map(b => b.order_item?.order_id || b.sale_id || b.order_id).filter(Boolean)));
+                    const clientIds = Array.from(new Set(rawBookings.map(b => b.client_id || b.order_item?.order?.client_id || b.order?.client_id).filter(Boolean)));
+                    
+                    let clientsMap = {};
+                    let ordersMap = {};
+
+                    try {
+                        const clientPromises = clientIds.map(cid => 
+                            fetch(`${CONFIG.QWEEKLE_API_BASE_URL}/clients/${cid}`, { headers: CONFIG.getQweekleHeaders() })
+                                .then(r => r.json())
+                                .then(data => { if(data && data.data) clientsMap[cid] = data.data; })
+                                .catch(() => null)
+                        );
+                        
+                        const orderPromises = orderIds.map(oid => 
+                            fetch(`${CONFIG.QWEEKLE_API_BASE_URL}/orders/${oid}?include=items`, { headers: CONFIG.getQweekleHeaders() })
+                                .then(r => r.json())
+                                .then(data => { if(data && data.data) ordersMap[oid] = data.data; })
+                                .catch(() => null)
+                        );
+                        
+                        await Promise.all([...clientPromises, ...orderPromises]);
+                        
+                        Object.values(ordersMap).forEach(orderData => {
+                            if (orderData && orderData.items) {
+                                orderData.items.forEach(item => {
+                                    // Injecter comme une ligne factice
+                                    rawBookings.push({
+                                        id: item.id || `item_${Math.random()}`,
+                                        order_item: { order_id: orderData.id },
+                                        client_id: orderData.client_id,
+                                        activity: { label: item.label || item.product_name || item.name },
+                                        qty: item.qty,
+                                        type: "PRODUCT"
+                                    });
+                                });
+                            }
+                        });
+                        
+                    } catch (e) {
+                        console.warn("⚠️ Impossible de récupérer infos supplémentaires API :", e);
+                    }
+
+                    // Convertir au format unifié "Supabase" pour utiliser le parseur ultra-optimisé
+                    const unifiedRows = rawBookings.map(b => {
+                        const orderId = b.order_item?.order_id || b.sale_id || b.order_id || b.id;
+                        let startAt = b.agenda?.start_at || b.agenda?.convoc_start_at || null;
+                        if (!startAt && b.created_at && b.type !== "PRODUCT") startAt = b.created_at;
+                        
+                        const cid = b.client_id || b.order_item?.order?.client_id || b.order?.client_id;
+                        const clientData = clientsMap[cid] || {};
+                        
+                        // Recréer le payload pour leurrer parseSupabaseActivitiesToBookings
+                        const fakePayload = {
+                            ...b,
+                            client: {
+                                firstname: clientData.firstname || b.client?.firstname || "Client",
+                                lastname: clientData.lastname || b.client?.lastname || "Qweekle",
+                                society: clientData.society || b.client?.society || "",
+                                type: clientData.type || "B2C"
+                            }
+                        };
+
+                        return {
+                            id: b.id,
+                            order_id: orderId,
+                            label: b.activity?.label || b.label || "Produit Qweekle",
+                            category: b.type === "PRODUCT" ? "Options" : (b.activity?.category || "Activité"),
+                            qty: b.qty || b.agenda?.qty_pax || 1,
+                            start_at: startAt,
+                            end_at: b.agenda?.end_at || b.agenda?.convoc_end_at || null,
+                            raw_payload: fakePayload
+                        };
+                    });
+
+                    // Utiliser parseSupabaseActivitiesToBookings !
+                    const parsedList = this.parseSupabaseActivitiesToBookings(unifiedRows, dateStr);
+                    // --- FIN NOUVEAU ---
+
+                    if (this.hasLocalStorage()) {
+                        const cachedStore = JSON.parse(localStorage.getItem("SFG_QWEEKLE_STORE") || "{}");
+                        cachedStore[dateStr] = parsedList;
+                        localStorage.setItem("SFG_QWEEKLE_STORE", JSON.stringify(cachedStore));
+                    }
+                    return { status: "success", data: parsedList, source: "qweekle_rest" };
+                }
+            } catch (error) {
+                console.warn("⚠️ Erreur API directe Qweekle :", error.message);
+            }
+        }
+
+        // 2. Tenter en fallback la base de production Live Supabase (Webhooks Qweekle)
         if (CONFIG.SUPABASE_URL && CONFIG.SUPABASE_KEY) {
             try {
                 const prevDate = new Date(dateStr);
@@ -200,11 +305,11 @@ class AppStateManager {
                 if (response.ok) {
                     let rows = await response.json();
                     
-                    // Récupérer également toutes les lignes rattachées aux order_id trouvés (notamment les options/produits sans start_at ou sur d'autres dates)
+                    // Récupérer également toutes les lignes rattachées aux order_id trouvés
                     const activeOrderIds = Array.from(new Set((rows || []).map(r => r.order_id).filter(Boolean)));
                     if (activeOrderIds.length > 0) {
                         try {
-                            const chunkedIds = activeOrderIds.slice(0, 50); // Éviter une URL trop longue si beaucoup de dossiers
+                            const chunkedIds = activeOrderIds.slice(0, 50); // Éviter une URL trop longue
                             const orderFilter = chunkedIds.map(id => `"${id}"`).join(",");
                             const optUrl = `${CONFIG.SUPABASE_URL}/rest/v1/booking_activities?select=*&order_id=in.(${orderFilter})&order=pack_step.asc`;
                             const optRes = await fetch(optUrl, {
@@ -238,30 +343,6 @@ class AppStateManager {
                 }
             } catch (error) {
                 console.warn("⚠️ Erreur de synchronisation Supabase Live :", error.message);
-            }
-        }
-
-        // 2. Tenter en direct via l'API REST officielle de Qweekle si disponible
-        if (CONFIG.QWEEKLE_API_TOKEN && CONFIG.QWEEKLE_API_BASE_URL) {
-            const url = `${CONFIG.QWEEKLE_API_BASE_URL}/bookings?filter[agenda.starts_between]=${dateStr}T00:00:00,${dateStr}T23:59:59&withOrder=true`;
-            try {
-                const response = await fetch(url, {
-                    method: "GET",
-                    headers: CONFIG.getQweekleHeaders()
-                });
-
-                if (response.ok) {
-                    const json = await response.json();
-                    const parsedList = this.parseRawQweekleBookings(json.data || [], dateStr);
-                    if (this.hasLocalStorage()) {
-                        const cachedStore = JSON.parse(localStorage.getItem("SFG_QWEEKLE_STORE") || "{}");
-                        cachedStore[dateStr] = parsedList;
-                        localStorage.setItem("SFG_QWEEKLE_STORE", JSON.stringify(cachedStore));
-                    }
-                    return { status: "success", data: parsedList, source: "qweekle_rest" };
-                }
-            } catch (error) {
-                console.warn("⚠️ Mode démo activé pour Qweekle (ou erreur réseau/CORS) :", error.message);
             }
         }
 
