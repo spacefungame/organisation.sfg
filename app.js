@@ -1718,8 +1718,10 @@ function renderPlanningAnniversaireA4() {
             if (searchLbl.includes("kidibul")) opts.kidibul = (opts.kidibul || 0) + qty;
             if (searchLbl.includes("chips")) opts.chips = (opts.chips || 0) + qty;
             if (searchLbl === "crêpe(s)" || (searchLbl.includes("crêpe") && !searchLbl.includes("gâteau"))) opts.crepes = (opts.crepes || 0) + qty;
-            if (searchLbl.includes("granité 200") || searchLbl.includes("granite 200") || searchLbl.includes("petit granité")) opts.granite200 = (opts.granite200 || 0) + qty;
-            if (searchLbl.includes("granité 350") || searchLbl.includes("granite 350") || searchLbl.includes("grand granité")) opts.granite350 = (opts.granite350 || 0) + qty;
+            if (searchLbl.includes("granit") && searchLbl.includes("200")) opts.granite200 = (opts.granite200 || 0) + qty;
+            else if (searchLbl.includes("granit") && searchLbl.includes("350")) opts.granite350 = (opts.granite350 || 0) + qty;
+            else if (searchLbl.includes("petit granit")) opts.granite200 = (opts.granite200 || 0) + qty;
+            else if (searchLbl.includes("grand granit")) opts.granite350 = (opts.granite350 || 0) + qty;
         });
     }
 
