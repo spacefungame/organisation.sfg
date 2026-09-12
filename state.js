@@ -749,7 +749,7 @@ class AppStateManager {
   getQweekleReservationsForDate(dateStr) {
     // 1. Vérifier si des données Qweekle synchronisées ou en cache sont disponibles pour cette date
     const cachedStore = this.hasLocalStorage()
-      ? JSON.parse(localStorage.getItem("SFG_QWEEKLE_STORE_V10") || "{}")
+      ? JSON.parse(localStorage.getItem("SFG_QWEEKLE_STORE_V11") || "{}")
       : {};
     if (cachedStore[dateStr] && Array.isArray(cachedStore[dateStr])) {
       // Ne pas utiliser un cache démo ancien (Marc Dupont QW-90102) si la base Supabase est active
@@ -897,8 +897,8 @@ class AppStateManager {
 
             const orderType = b.order_item?.order?.type || b.order?.type;
 
-            // Exclure les blocs fantômes/orphelins (souvent d'anciennes modifications de propositions)
-            if (st === "unconfirmed" && !b.order_item && !b.sale_item_id)
+            // Exclure les blocs fantômes/orphelins (qui n'ont plus de lien avec une commande/facture)
+            if (!b.order_item && !b.sale_item_id && b.type === "A")
               return false;
 
             // Conserver les 'propositions' (unconfirmed) si elles ont été créées par le staff (sale_order)
@@ -1109,7 +1109,7 @@ class AppStateManager {
 
           if (this.hasLocalStorage()) {
             const cachedStore = JSON.parse(
-              localStorage.getItem("SFG_QWEEKLE_STORE_V10") || "{}",
+              localStorage.getItem("SFG_QWEEKLE_STORE_V11") || "{}",
             );
             cachedStore[dateStr] = parsedList;
             const keys = Object.keys(cachedStore).sort();
@@ -1118,7 +1118,7 @@ class AppStateManager {
             }
             try {
               localStorage.setItem(
-                "SFG_QWEEKLE_STORE_V10",
+                "SFG_QWEEKLE_STORE_V11",
                 JSON.stringify(cachedStore),
               );
             } catch (err) {
@@ -1243,7 +1243,7 @@ class AppStateManager {
 
           if (this.hasLocalStorage()) {
             const cachedStore = JSON.parse(
-              localStorage.getItem("SFG_QWEEKLE_STORE_V10") || "{}",
+              localStorage.getItem("SFG_QWEEKLE_STORE_V11") || "{}",
             );
             cachedStore[dateStr] = parsedList;
             const keys = Object.keys(cachedStore).sort();
@@ -1252,7 +1252,7 @@ class AppStateManager {
             }
             try {
               localStorage.setItem(
-                "SFG_QWEEKLE_STORE_V10",
+                "SFG_QWEEKLE_STORE_V11",
                 JSON.stringify(cachedStore),
               );
             } catch (err) {
