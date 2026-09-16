@@ -1577,15 +1577,14 @@ function renderPlanningAnniversaireA4() {
   // Récupérer toutes les réservations Qweekle
   let reservations = appState.getQweekleReservationsForDate(appState.currentDate) || [];
   
-  // Filtrer uniquement celles qui sont des "anniversaires" ou "évènements adultes" ou qui ont une "table réservée"
+  // Filtrer uniquement celles qui sont des "anniversaires" ou qui ont une "table réservée"
   reservations = reservations.filter(res => {
     const isAnniv = res.categories && res.categories.includes("anniversaire");
-    const isAdult = res.categories && (res.categories.includes("évènement adulte") || res.categories.includes("team building"));
     const hasTable = res.activites && res.activites.some(a => 
       a.nom.toLowerCase().includes("table réservée") || 
       a.nom.toLowerCase().includes("table reservee")
     );
-    return isAnniv || isAdult || hasTable;
+    return isAnniv || hasTable;
   });
 
   // Déclencher une synchronisation automatique
@@ -1921,12 +1920,11 @@ function renderPostIts() {
         // pour correspondre EXACTEMENT à la logique de la vue Anniversaire A4
         const tableReservations = reservations.filter(res => {
             const isAnniv = res.categories && res.categories.includes("anniversaire");
-            const isAdult = res.categories && (res.categories.includes("évènement adulte") || res.categories.includes("team building"));
             const hasTable = res.activites && res.activites.some(a => 
                 a.nom.toLowerCase().includes("table réservée") || 
                 a.nom.toLowerCase().includes("table reservee")
             );
-            return isAnniv || isAdult || hasTable;
+            return isAnniv || hasTable;
         });
 
         const assigner = new window.TableAssigner(currentTablesConfig);
