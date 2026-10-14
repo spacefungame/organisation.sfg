@@ -42,6 +42,7 @@ class AppStateManager {
 
   initStore() {
     if (!this.hasLocalStorage()) return;
+    localStorage.removeItem("SFG_EMAIL_ALERTS_STORE");
     if (!localStorage.getItem("SFG_EVENTS_STORE")) {
       localStorage.setItem(
         "SFG_EVENTS_STORE",
@@ -582,165 +583,10 @@ class AppStateManager {
   }
 
   // =========================================================================
-  // GESTION ET SYNCHRONISATION DES ALERTES EMAILS (SUPABASE)
+  // GESTION DES ALERTES EMAILS (DÉSACTIVÉ)
   // =========================================================================
-  async syncEmailAlertsFromSupabase() {
-    if (
-      typeof CONFIG === "undefined" ||
-      !CONFIG.SUPABASE_URL ||
-      !CONFIG.SUPABASE_KEY
-    )
-      return;
-    try {
-      // On récupère toutes les alertes non résolues (ou liées à des réservations récentes)
-      // Pour simplifier, on prend celles dont le status n'est pas 'resolved'
-      const url = `${CONFIG.SUPABASE_URL}/rest/v1/email_alerts?status=eq.unread&select=id,qweekle_booking_id,email_subject,email_sender,detected_changes,received_at`;
-      const res = await fetch(url, {
-        headers: {
-          apikey: CONFIG.SUPABASE_KEY,
-          Authorization: `Bearer ${CONFIG.SUPABASE_KEY}`,
-          Accept: "application/json",
-        },
-      });
-      if (!res.ok) return;
-      const rows = await res.json();
-
-      const store = {};
-      rows.forEach((r) => {
-        if (r.qweekle_booking_id) {
-          if (!store[r.qweekle_booking_id]) {
-            store[r.qweekle_booking_id] = [];
-          }
-          store[r.qweekle_booking_id].push(r);
-        }
-      });
-
-      if (this.hasLocalStorage()) {
-        localStorage.setItem("SFG_EMAIL_ALERTS_STORE", JSON.stringify(store));
-      }
-    } catch (e) {
-      console.warn("Erreur sync email alerts", e);
-    }
-  }
-
   getEmailAlerts(booking) {
-    try {
-      const store = this.hasLocalStorage()
-        ? JSON.parse(localStorage.getItem("SFG_EMAIL_ALERTS_STORE") || "{}")
-        : {};
-        
-      const cleanBookingId = (booking.id || "").toString().replace(/^QW-/, "");
-      
-      // Collecte tous les IDs à chercher (le principal + les activités)
-      const idsToCheck = [cleanBookingId];
-      
-      if (booking.activites && Array.isArray(booking.activites) && booking.activites.length > 0) {
-        booking.activites.forEach(act => {
-          const actIdsStr = (act.id || "").toString();
-          actIdsStr.split(',').forEach(idStr => {
-            const actId = idStr.trim().replace(/^QW-/, "");
-            if (actId) idsToCheck.push(actId);
-          });
-        });
-      }
-
-      // Normalisation: on retire tout ce qui est non alphanumérique et les préfixes ABXX/OXXX/OIXX etc.
-      const normalizeId = (id) => (id || "").toString().replace(/[^a-zA-Z0-9]/g, '').replace(/^(ABXX|OXXX|OIXX|QW)/i, '');
-
-      const normalizedIdsToCheck = idsToCheck.map(normalizeId).filter(id => id.length > 5);
-
-      let allAlerts = [];
-      const addedAlertIds = new Set();
-      let storeModified = false;
-      
-      // On parcourt tout le store pour faire un match souple
-      if (store && typeof store === 'object') {
-        Object.entries(store).forEach(([alertBookingId, alerts]) => {
-          const normAlertId = normalizeId(alertBookingId);
-          
-          // Est-ce que cet ID d'alerte correspond à l'un des IDs de cette réservation ?
-          const isMatch = normalizedIdsToCheck.some(idToCheck => 
-            normAlertId.includes(idToCheck) || idToCheck.includes(normAlertId)
-          );
-          
-          if (isMatch && Array.isArray(alerts)) {
-             alerts.forEach((al, index) => {
-               if (al && al.id && !addedAlertIds.has(al.id)) {
-                 const detected = (al.detected_changes || "").trim();
-                 
-                 let shouldIgnore = false;
-                 if (detected.toLowerCase() === "null") {
-                    shouldIgnore = true;
-                 } else {
-                    let alertPax = null;
-                    const pMatch1 = detected.match(/Changement du nombre de participants\s*:\s*(\d+)/i);
-                    const pMatch2 = detected.match(/(?:passe|passant) de \d+ [aà] (\d+)/i);
-                    const pMatch3 = detected.match(/(\d+)\s*(?:personnes|enfants|participants|jeunes)/i);
-                    
-                    if (pMatch1) alertPax = parseInt(pMatch1[1], 10);
-                    else if (pMatch2) alertPax = parseInt(pMatch2[1], 10);
-                    else if (pMatch3) alertPax = parseInt(pMatch3[1], 10);
-
-                    if (alertPax !== null) {
-                       const bookingPax = parseInt(booking.nbPersonnes || booking.personnes, 10);
-                       if (!isNaN(alertPax) && !isNaN(bookingPax) && alertPax === bookingPax) {
-                           shouldIgnore = true;
-                       }
-                    }
-                 }
-                 
-                 if (shouldIgnore) {
-                    this.markEmailAlertAsRead(al.id); // Auto-resolve in backend
-                    alerts[index] = null; // Mark for removal locally
-                    storeModified = true;
-                    return; // Skip adding to allAlerts
-                 }
-
-                 addedAlertIds.add(al.id);
-                 allAlerts.push(al);
-               }
-             });
-          }
-        });
-      }
-      
-      if (storeModified) {
-         Object.keys(store).forEach(k => {
-            if (store[k]) store[k] = store[k].filter(Boolean);
-         });
-         if (this.hasLocalStorage()) {
-            localStorage.setItem("SFG_EMAIL_ALERTS_STORE", JSON.stringify(store));
-         }
-      }
-      
-      return allAlerts;
-    } catch (err) {
-      console.warn("Erreur dans getEmailAlerts:", err);
-      return []; // Return empty array to prevent crashing the rendering
-    }
-  }
-
-  async markEmailAlertAsRead(alertId) {
-    if (!CONFIG.SUPABASE_URL || !CONFIG.SUPABASE_KEY) return false;
-    try {
-      const response = await fetch(`${CONFIG.SUPABASE_URL}/rest/v1/email_alerts?id=eq.${alertId}`, {
-        method: "PATCH",
-        headers: {
-          apikey: CONFIG.SUPABASE_KEY,
-          Authorization: `Bearer ${CONFIG.SUPABASE_KEY}`,
-          "Content-Type": "application/json",
-          Prefer: "return=minimal"
-        },
-        body: JSON.stringify({ status: "read" })
-      });
-      if (response.ok) {
-        await this.syncEmailAlertsFromSupabase();
-        return true;
-      }
-    } catch (e) {
-      console.error("Erreur markEmailAlertAsRead:", e);
-    }
-    return false;
+    return [];
   }
 
   // =========================================================================
@@ -749,7 +595,7 @@ class AppStateManager {
   getQweekleReservationsForDate(dateStr) {
     // 1. Vérifier si des données Qweekle synchronisées ou en cache sont disponibles pour cette date
     const cachedStore = this.hasLocalStorage()
-      ? JSON.parse(localStorage.getItem("SFG_QWEEKLE_STORE_V11") || "{}")
+      ? JSON.parse(localStorage.getItem("SFG_QWEEKLE_STORE_V12") || "{}")
       : {};
     if (cachedStore[dateStr] && Array.isArray(cachedStore[dateStr])) {
       // Ne pas utiliser un cache démo ancien (Marc Dupont QW-90102) si la base Supabase est active
@@ -848,7 +694,6 @@ class AppStateManager {
     }
 
     // 3. Charger le cache, puis rafraîchir en arrière-plan depuis Supabase si configuré
-    await this.syncEmailAlertsFromSupabase();
     await this.syncOverridesFromSupabase(dateStr);
     await this.syncCustomTablesFromSupabase();
 
@@ -1109,7 +954,7 @@ class AppStateManager {
 
           if (this.hasLocalStorage()) {
             const cachedStore = JSON.parse(
-              localStorage.getItem("SFG_QWEEKLE_STORE_V11") || "{}",
+              localStorage.getItem("SFG_QWEEKLE_STORE_V12") || "{}",
             );
             cachedStore[dateStr] = parsedList;
             const keys = Object.keys(cachedStore).sort();
@@ -1118,7 +963,7 @@ class AppStateManager {
             }
             try {
               localStorage.setItem(
-                "SFG_QWEEKLE_STORE_V11",
+                "SFG_QWEEKLE_STORE_V12",
                 JSON.stringify(cachedStore),
               );
             } catch (err) {
@@ -1243,7 +1088,7 @@ class AppStateManager {
 
           if (this.hasLocalStorage()) {
             const cachedStore = JSON.parse(
-              localStorage.getItem("SFG_QWEEKLE_STORE_V11") || "{}",
+              localStorage.getItem("SFG_QWEEKLE_STORE_V12") || "{}",
             );
             cachedStore[dateStr] = parsedList;
             const keys = Object.keys(cachedStore).sort();
@@ -1252,7 +1097,7 @@ class AppStateManager {
             }
             try {
               localStorage.setItem(
-                "SFG_QWEEKLE_STORE_V11",
+                "SFG_QWEEKLE_STORE_V12",
                 JSON.stringify(cachedStore),
               );
             } catch (err) {
