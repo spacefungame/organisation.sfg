@@ -595,7 +595,7 @@ class AppStateManager {
   getQweekleReservationsForDate(dateStr) {
     // 1. Vérifier si des données Qweekle synchronisées ou en cache sont disponibles pour cette date
     const cachedStore = this.hasLocalStorage()
-      ? JSON.parse(localStorage.getItem("SFG_QWEEKLE_STORE_V12") || "{}")
+      ? JSON.parse(localStorage.getItem("SFG_QWEEKLE_STORE_V13") || "{}")
       : {};
     if (cachedStore[dateStr] && Array.isArray(cachedStore[dateStr])) {
       // Ne pas utiliser un cache démo ancien (Marc Dupont QW-90102) si la base Supabase est active
@@ -747,9 +747,9 @@ class AppStateManager {
               return false;
 
             // Conserver les 'propositions' (unconfirmed) si elles ont été créées par le staff (sale_order)
-            // Rejeter les paniers abandonnés sur le site web (front_order), SAUF s'il y a eu un paiement
+            // Rejeter les paniers abandonnés sur le site web (front_order) et les brouillons de planning non validés (planning_order), SAUF s'il y a eu un paiement
             const globalSt = (b.global_status || b.order?.global_status || b.order_item?.order?.global_status || "").toLowerCase();
-            if (st === "unconfirmed" && orderType === "front_order" && globalSt !== "partially_paid" && globalSt !== "paid")
+            if (st === "unconfirmed" && (orderType === "front_order" || orderType === "planning_order") && globalSt !== "partially_paid" && globalSt !== "paid")
               return false;
 
             return true;
@@ -954,7 +954,7 @@ class AppStateManager {
 
           if (this.hasLocalStorage()) {
             const cachedStore = JSON.parse(
-              localStorage.getItem("SFG_QWEEKLE_STORE_V12") || "{}",
+              localStorage.getItem("SFG_QWEEKLE_STORE_V13") || "{}",
             );
             cachedStore[dateStr] = parsedList;
             const keys = Object.keys(cachedStore).sort();
@@ -963,7 +963,7 @@ class AppStateManager {
             }
             try {
               localStorage.setItem(
-                "SFG_QWEEKLE_STORE_V12",
+                "SFG_QWEEKLE_STORE_V13",
                 JSON.stringify(cachedStore),
               );
             } catch (err) {
@@ -1088,7 +1088,7 @@ class AppStateManager {
 
           if (this.hasLocalStorage()) {
             const cachedStore = JSON.parse(
-              localStorage.getItem("SFG_QWEEKLE_STORE_V12") || "{}",
+              localStorage.getItem("SFG_QWEEKLE_STORE_V13") || "{}",
             );
             cachedStore[dateStr] = parsedList;
             const keys = Object.keys(cachedStore).sort();
@@ -1097,7 +1097,7 @@ class AppStateManager {
             }
             try {
               localStorage.setItem(
-                "SFG_QWEEKLE_STORE_V12",
+                "SFG_QWEEKLE_STORE_V13",
                 JSON.stringify(cachedStore),
               );
             } catch (err) {
@@ -1413,25 +1413,45 @@ class AppStateManager {
       );
       let nbPersonnes = 0;
       if (arrivGroup.length > 0) {
-        let currentTotal = 0;
+        const seenOrderItemsAtTime = new Map();
+        let totalPax = 0;
         arrivGroup.forEach(a => {
+          const oiId = a.raw_payload?.order_item?.id || a.order_item?.id || a.raw_payload?.order_item_id || a.order_item_id || "";
+          const sTime = a.start_at || a.agenda?.start_at || "";
           const qty = Number(a.qty) || Number(a.raw_payload?.client?.qty) || Number(a.raw_payload?.qty) || 0;
-          if (currentTotal === qty) {
-             currentTotal = Math.max(currentTotal, qty);
+          const key = (oiId ? oiId : (a.label || "accueil")) + "_" + sTime;
+
+          if (seenOrderItemsAtTime.has(key)) {
+            const prevQty = seenOrderItemsAtTime.get(key);
+            if (qty > prevQty) {
+              totalPax += (qty - prevQty);
+              seenOrderItemsAtTime.set(key, qty);
+            }
           } else {
-             currentTotal += qty;
+            seenOrderItemsAtTime.set(key, qty);
+            totalPax += qty;
           }
         });
-        nbPersonnes = currentTotal;
+        nbPersonnes = totalPax;
       }
       if (!nbPersonnes || isNaN(nbPersonnes) || nbPersonnes <= 0) {
+        const seenOrderItems = new Map();
         let backupTotal = 0;
         group.forEach(a => {
+          const oiId = a.raw_payload?.order_item?.id || a.order_item?.id || a.raw_payload?.order_item_id || a.order_item_id || "";
+          const sTime = a.start_at || a.agenda?.start_at || "";
           const qty = Number(a.qty) || Number(a.raw_payload?.client?.qty) || Number(a.raw_payload?.qty) || 0;
-          if (backupTotal === qty) {
-             backupTotal = Math.max(backupTotal, qty);
+          const key = (oiId ? oiId : (a.label || "act")) + "_" + sTime;
+
+          if (seenOrderItems.has(key)) {
+            const prevQty = seenOrderItems.get(key);
+            if (qty > prevQty) {
+              backupTotal += (qty - prevQty);
+              seenOrderItems.set(key, qty);
+            }
           } else {
-             backupTotal += qty;
+            seenOrderItems.set(key, qty);
+            backupTotal += qty;
           }
         });
         nbPersonnes = backupTotal || 1;
@@ -1478,6 +1498,7 @@ class AppStateManager {
           nom: this.cleanLabel(act.label || "Activité Qweekle"),
           zone: act.location || act.category || "Zone Générale",
           nbPersonnes: actQty,
+          orderItemId: act.raw_payload?.order_item?.id || act.order_item?.id || act.raw_payload?.order_item_id || act.order_item_id || "",
         };
       });
 
@@ -2335,24 +2356,34 @@ class AppStateManager {
           zone: zone,
           noms: [(act.nom || "").trim()],
           ids: act.id ? [act.id] : [],
+          orderItemIds: act.orderItemId ? [act.orderItemId] : [],
           nbPersonnes: Number(act.nbPersonnes) || Number(fallbackQty) || 1,
         });
       } else {
         const existing = groupedMap.get(key);
         const cleanNom = (act.nom || "").trim();
-        if (!existing.noms.includes(cleanNom)) {
+        const isDifferentActivity = !existing.noms.includes(cleanNom);
+        if (isDifferentActivity) {
           existing.noms.push(cleanNom);
         }
         if (act.id && !existing.ids.includes(act.id)) {
           existing.ids.push(act.id);
         }
+
+        const actOiId = act.orderItemId || "";
+        const isSameOrderItem = actOiId && existing.orderItemIds && existing.orderItemIds.includes(actOiId);
+        if (actOiId && !existing.orderItemIds.includes(actOiId)) {
+          existing.orderItemIds.push(actOiId);
+        }
+
         const newQty = Number(act.nbPersonnes) || Number(fallbackQty) || 1;
         const currentQty = Number(existing.nbPersonnes) || 0;
         
-        // Si les quantités sont identiques, c'est probablement un doublon généré par Qweekle
-        // (ex: un client achète 2 packs pour les mêmes 10 personnes, Qweekle génère 2 'Accueil' de 10)
-        // Si les quantités sont différentes, c'est probablement un ajout (ex: 10 personnes + 2 ajoutées plus tard)
-        if (currentQty === newQty) {
+        // Si les activités ont des noms différents OU proviennent de packs/order_items différents, on additionne les personnes !
+        // Si c'est le même order_item avec le même nom, c'est un doublon de pack composite Qweekle
+        if (isDifferentActivity || (!isSameOrderItem && actOiId)) {
+          existing.nbPersonnes = currentQty + newQty;
+        } else if (currentQty === newQty) {
           existing.nbPersonnes = Math.max(currentQty, newQty);
         } else {
           existing.nbPersonnes = currentQty + newQty;
@@ -2705,15 +2736,17 @@ class AppStateManager {
     const cats = [];
 
     // Enfant: 7-12 ans, enfant, junior
-    if (/\b(enfant|enfants|7\s*-\s*12|junior|juniors)\b/i.test(fullStr)) {
+    if (
+      /\b(enfant|enfants|junior|juniors)\b/i.test(fullStr) ||
+      /7\s*-\s*12/i.test(fullStr)
+    ) {
       cats.push("enfant");
     }
 
     // Ado: 13-18 ans, ado, ados, adolescent, teen (regex \b pour ne pas matcher "mikado")
     if (
-      /\b(ado|ados|adolescent|adolescents|13\s*-\s*18|teen|teens)\b/i.test(
-        fullStr,
-      )
+      /\b(ado|ados|adolescent|adolescents|teen|teens)\b/i.test(fullStr) ||
+      /13\s*-\s*18/i.test(fullStr)
     ) {
       cats.push("ado");
     }
