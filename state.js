@@ -595,7 +595,7 @@ class AppStateManager {
   getQweekleReservationsForDate(dateStr) {
     // 1. Vérifier si des données Qweekle synchronisées ou en cache sont disponibles pour cette date
     const cachedStore = this.hasLocalStorage()
-      ? JSON.parse(localStorage.getItem("SFG_QWEEKLE_STORE_V13") || "{}")
+      ? JSON.parse(localStorage.getItem("SFG_QWEEKLE_STORE_V14") || "{}")
       : {};
     if (cachedStore[dateStr] && Array.isArray(cachedStore[dateStr])) {
       // Ne pas utiliser un cache démo ancien (Marc Dupont QW-90102) si la base Supabase est active
@@ -851,8 +851,10 @@ class AppStateManager {
             );
           }
 
-          // --- NOUVEAU : Récupérer les sous-comptes (enfants) depuis Supabase pour pallier aux manques de l'API REST Qweekle ---
+          // --- NOUVEAU : Récupérer les sous-comptes (enfants) ET les nouvelles réservations/modifications post-migration (BXXX) depuis Supabase ---
           let supabaseSubclientsMap = {};
+          let newSupabaseRows = [];
+          let noteSupabaseRows = [];
           if (CONFIG.SUPABASE_URL && CONFIG.SUPABASE_KEY) {
             try {
               const prevDate = new Date(dateStr);
@@ -861,7 +863,7 @@ class AppStateManager {
               const nextDate = new Date(dateStr);
               nextDate.setDate(nextDate.getDate() + 1);
               const nextDateStr = nextDate.toISOString().split("T")[0];
-              const supaUrl = `${CONFIG.SUPABASE_URL}/rest/v1/booking_activities?select=order_id,qweekle_booking_id,raw_payload&start_at=gte.${prevDateStr}T12:00:00Z&start_at=lt.${nextDateStr}T23:59:59Z`;
+              const supaUrl = `${CONFIG.SUPABASE_URL}/rest/v1/booking_activities?select=*&start_at=gte.${prevDateStr}T12:00:00Z&start_at=lt.${nextDateStr}T23:59:59Z&order=pack_step.asc`;
 
               const responseSupa = await fetch(supaUrl, {
                 method: "GET",
@@ -874,28 +876,66 @@ class AppStateManager {
               if (responseSupa.ok) {
                 const supaData = await responseSupa.json();
                 supaData.forEach((row) => {
+                  const qbId = row.qweekle_booking_id || row.raw_payload?.id || "";
+                  if (qbId.startsWith("NOTE_")) {
+                    noteSupabaseRows.push(row);
+                    return;
+                  }
+
                   if (row.raw_payload) {
                     const subs =
                       row.raw_payload.subclients ||
                       row.raw_payload.client?.sub_clients ||
+                      row.raw_payload.participants ||
                       [];
                     if (subs.length > 0) {
                       if (row.order_id) supabaseSubclientsMap[row.order_id] = subs;
                       if (row.qweekle_booking_id) supabaseSubclientsMap[row.qweekle_booking_id] = subs;
+                      if (row.raw_payload.client?.id) supabaseSubclientsMap[row.raw_payload.client.id] = subs;
+                    }
+                  }
+
+                  // Détecter les réservations créées ou modifiées dans le nouveau Qweekle (IDs BXXX...)
+                  const isNewQweekle =
+                    qbId.startsWith("BXXX") ||
+                    (row.created_at && row.created_at >= "2026-11-08T19:50:00Z");
+
+                  if (isNewQweekle) {
+                    const cl = row.raw_payload?.client || {};
+                    const hasValidClient = Boolean(
+                      row.client_lastname ||
+                        row.client_firstname ||
+                        row.client_email ||
+                        cl.id ||
+                        cl.lastname ||
+                        cl.firstname ||
+                        cl.society ||
+                        cl.email,
+                    );
+                    if (hasValidClient) {
+                      if (
+                        row.raw_payload &&
+                        Array.isArray(row.raw_payload.participants) &&
+                        row.raw_payload.client &&
+                        !row.raw_payload.client.sub_clients
+                      ) {
+                        row.raw_payload.client.sub_clients = row.raw_payload.participants;
+                      }
+                      newSupabaseRows.push(row);
                     }
                   }
                 });
               }
             } catch (e) {
               console.warn(
-                "⚠️ Impossible de récupérer les sous-comptes Supabase :",
+                "⚠️ Impossible de récupérer les données Supabase complémentaires :",
                 e,
               );
             }
           }
 
           // Convertir au format unifié "Supabase" pour utiliser le parseur ultra-optimisé
-          const unifiedRows = rawBookings.map((b) => {
+          let unifiedRows = rawBookings.map((b) => {
             const orderId =
               b.order_item?.order_id || b.sale_id || b.order_id || b.id;
             let startAt =
@@ -926,7 +966,10 @@ class AppStateManager {
                   clientData.lastname || b.client?.lastname || "Qweekle",
                 society: clientData.society || b.client?.society || "",
                 type: clientData.type || "B2C",
-                sub_clients: supabaseSubclientsMap[orderId] || [],
+                sub_clients:
+                  supabaseSubclientsMap[orderId] ||
+                  supabaseSubclientsMap[cid] ||
+                  [],
               },
             };
 
@@ -945,6 +988,90 @@ class AppStateManager {
             };
           });
 
+          // Fusionner les réservations/modifications post-migration (BXXX) issues de Supabase
+          if (newSupabaseRows.length > 0) {
+            const normName = (ln, fn) => {
+              const l = (ln || "").trim().toLowerCase();
+              const f = (fn || "").trim().toLowerCase();
+              return l && l !== "qweekle" ? `${l}|${f}` : "";
+            };
+
+            // Identifier les clients ayant des créneaux BXXX sur cette date pour remplacer leurs anciens créneaux ABXX s'ils ont été modifiés
+            const modifiedClientIds = new Set();
+            const modifiedClientNames = new Map(); // normName -> BXXX client id
+
+            newSupabaseRows.forEach((r) => {
+              if (!r.start_at) return;
+              const rDate = new Date(r.start_at).toLocaleDateString("en-CA", {
+                timeZone: "Europe/Brussels",
+              });
+              if (rDate !== dateStr) return;
+              const cl = r.raw_payload?.client || {};
+              const cid = cl.id || r.client_id;
+              if (cid) modifiedClientIds.add(cid);
+              const nk = normName(
+                r.client_lastname || cl.lastname,
+                r.client_firstname || cl.firstname,
+              );
+              if (nk) modifiedClientNames.set(nk, cid || nk);
+            });
+
+            if (modifiedClientIds.size > 0 || modifiedClientNames.size > 0) {
+              const inheritedOrderByClient = new Map();
+              unifiedRows = unifiedRows.filter((oldRow) => {
+                const cl = oldRow.raw_payload?.client || {};
+                const oldCid = cl.id || oldRow.client_id;
+                const nk = normName(cl.lastname, cl.firstname);
+                const isModifiedClient =
+                  (oldCid && modifiedClientIds.has(oldCid)) ||
+                  (nk && modifiedClientNames.has(nk));
+
+                if (!isModifiedClient) return true;
+
+                const targetCid =
+                  (nk && modifiedClientNames.get(nk)) || oldCid;
+                if (targetCid && oldRow.raw_payload?.order) {
+                  inheritedOrderByClient.set(targetCid, {
+                    order: oldRow.raw_payload.order,
+                    order_id: oldRow.order_id,
+                    order_item: oldRow.raw_payload.order_item,
+                  });
+                }
+
+                // Conserver les lignes PRODUCT/options de la commande en les rattachant au nouveau client.id
+                if (oldRow.raw_payload?.type === "PRODUCT" || !oldRow.start_at) {
+                  if (targetCid && oldRow.raw_payload?.client) {
+                    oldRow.raw_payload.client.id = targetCid;
+                  }
+                  return true;
+                }
+                // Supprimer l'ancien créneau horaire ABXX remplacé par les nouveaux créneaux BXXX
+                return false;
+              });
+
+              // Propager les métadonnées de commande (notes/pack) aux nouvelles lignes BXXX du même client
+              newSupabaseRows.forEach((r) => {
+                const cl = r.raw_payload?.client || {};
+                const nk = normName(
+                  r.client_lastname || cl.lastname,
+                  r.client_firstname || cl.firstname,
+                );
+                const cid = cl.id || r.client_id || (nk && modifiedClientNames.get(nk));
+                const inherited = cid && inheritedOrderByClient.get(cid);
+                if (inherited && r.raw_payload) {
+                  if (!r.raw_payload.order) r.raw_payload.order = inherited.order;
+                  if (!r.order_id) r.order_id = inherited.order_id;
+                }
+              });
+            }
+
+            unifiedRows = unifiedRows.concat(newSupabaseRows);
+          }
+
+          if (noteSupabaseRows.length > 0) {
+            unifiedRows = unifiedRows.concat(noteSupabaseRows);
+          }
+
           // Utiliser parseSupabaseActivitiesToBookings !
           const parsedList = this.parseSupabaseActivitiesToBookings(
             unifiedRows,
@@ -954,7 +1081,7 @@ class AppStateManager {
 
           if (this.hasLocalStorage()) {
             const cachedStore = JSON.parse(
-              localStorage.getItem("SFG_QWEEKLE_STORE_V13") || "{}",
+              localStorage.getItem("SFG_QWEEKLE_STORE_V14") || "{}",
             );
             cachedStore[dateStr] = parsedList;
             const keys = Object.keys(cachedStore).sort();
@@ -963,7 +1090,7 @@ class AppStateManager {
             }
             try {
               localStorage.setItem(
-                "SFG_QWEEKLE_STORE_V13",
+                "SFG_QWEEKLE_STORE_V14",
                 JSON.stringify(cachedStore),
               );
             } catch (err) {
@@ -1088,7 +1215,7 @@ class AppStateManager {
 
           if (this.hasLocalStorage()) {
             const cachedStore = JSON.parse(
-              localStorage.getItem("SFG_QWEEKLE_STORE_V13") || "{}",
+              localStorage.getItem("SFG_QWEEKLE_STORE_V14") || "{}",
             );
             cachedStore[dateStr] = parsedList;
             const keys = Object.keys(cachedStore).sort();
@@ -1097,7 +1224,7 @@ class AppStateManager {
             }
             try {
               localStorage.setItem(
-                "SFG_QWEEKLE_STORE_V13",
+                "SFG_QWEEKLE_STORE_V14",
                 JSON.stringify(cachedStore),
               );
             } catch (err) {
@@ -1216,6 +1343,23 @@ class AppStateManager {
         gStatus === "REJECTED"
       ) {
         return false;
+      }
+
+      // Ignorer les créneaux brouillons (POS / devis sans client associé) du nouveau Qweekle (BXXX)
+      const qbId = r.qweekle_booking_id || r.raw_payload?.id || r.id || "";
+      if (String(qbId).startsWith("BXXX")) {
+        const cl = r.raw_payload?.client || {};
+        const hasClient = Boolean(
+          r.client_lastname ||
+            r.client_firstname ||
+            r.client_email ||
+            cl.id ||
+            cl.lastname ||
+            cl.firstname ||
+            cl.society ||
+            cl.email,
+        );
+        if (!hasClient) return false;
       }
 
       if (r.start_at) {
@@ -1818,20 +1962,47 @@ class AppStateManager {
               allSubclients.push(sc),
             );
           }
+          if (Array.isArray(act.participants)) {
+            act.participants.forEach((sc) => allSubclients.push(sc));
+          } else if (act.raw_payload && Array.isArray(act.raw_payload.participants)) {
+            act.raw_payload.participants.forEach((sc) => allSubclients.push(sc));
+          }
         });
 
         if (allSubclients.length > 0) {
           const targetDateObj = new Date(dateStr);
-          let bestChild = allSubclients[0];
+          const computeCandidateAge = (sc) => {
+            if (sc.age || sc.age_years) return Number(sc.age || sc.age_years);
+            const bdStr = sc.birthday_at || sc.birthdate || sc.date_naissance;
+            if (!bdStr) return null;
+            const bDate = new Date(bdStr);
+            if (isNaN(bDate.getTime())) return null;
+            let calcAge = targetDateObj.getFullYear() - bDate.getFullYear();
+            const m = targetDateObj.getMonth() - bDate.getMonth();
+            if (m < 0 || (m === 0 && targetDateObj.getDate() < bDate.getDate())) calcAge--;
+            return calcAge;
+          };
+
+          // Dans le nouveau Qweekle, participants peut contenir le parent (ex: 40 ans) avec profile="Enfant".
+          // On privilégie les participants dont l'âge est <= 18 ans.
+          const childCandidates = allSubclients.filter((sc) => {
+            const a = computeCandidateAge(sc);
+            return a === null || (a >= 1 && a <= 18);
+          });
+          const candidatePool =
+            childCandidates.length > 0 ? childCandidates : allSubclients;
+
+          let bestChild = candidatePool[0];
           let bestDist = 9999;
 
-          allSubclients.forEach((sc) => {
+          candidatePool.forEach((sc) => {
             if (sc.birthday_at || sc.birthdate) {
               const bDate = new Date(sc.birthday_at || sc.birthdate);
-              const dist = Math.abs(
+              const rawDist = Math.abs(
                 (bDate.getMonth() - targetDateObj.getMonth()) * 30 +
                   (bDate.getDate() - targetDateObj.getDate()),
               );
+              const dist = Math.min(rawDist, 365 - rawDist);
               if (dist < bestDist) {
                 bestDist = dist;
                 bestChild = sc;
@@ -1839,18 +2010,7 @@ class AppStateManager {
             }
           });
 
-          let age = bestChild.age || bestChild.age_years || "";
-          if (!age && (bestChild.birthday_at || bestChild.birthdate || bestChild.date_naissance)) {
-            const bDate = new Date(
-              bestChild.birthday_at || bestChild.birthdate || bestChild.date_naissance,
-            );
-            if (!isNaN(bDate.getTime())) {
-              let calcAge = targetDateObj.getFullYear() - bDate.getFullYear();
-              const m = targetDateObj.getMonth() - bDate.getMonth();
-              if (m < 0 || (m === 0 && targetDateObj.getDate() < bDate.getDate())) calcAge--;
-              age = calcAge;
-            }
-          }
+          let age = computeCandidateAge(bestChild) || "";
 
           enfantAnniversaire = {
             prenom:
@@ -1923,15 +2083,25 @@ class AppStateManager {
       );
     });
 
+    const hasReservedTable = mainActs.some((a) => {
+      const l = (a.nom || a.label || "").toLowerCase();
+      return (
+        l.includes("table réservée") ||
+        l.includes("table reservee") ||
+        l.includes("table installée")
+      );
+    });
+
     // Filtrer les activités d'accueil ou de table
     const filteredActs = mainActs.filter((a) => {
       const l = (a.nom || a.label || "").toLowerCase();
-      return !l.includes("accueil") && !l.includes("table réservée");
+      return (
+        !l.includes("accueil") &&
+        !l.includes("table réservée") &&
+        !l.includes("table reservee") &&
+        !l.includes("table installée")
+      );
     });
-
-    const actLabels = filteredActs.map((a) =>
-      (a.label || a.nom || "").toLowerCase(),
-    );
 
     if (!filteredActs.length) {
       return (
@@ -1939,57 +2109,98 @@ class AppStateManager {
       );
     }
 
-    // Vérifier si toutes les activités principales sont du Laser Game
-    const allLaser = mainActs.every((a) => {
+    const getActDurationMin = (a) => {
+      let dur = Number(a.duration);
+      if (dur && !isNaN(dur) && dur > 0) return dur;
+      if (a.start_at && a.end_at) {
+        const diff = Math.round(
+          (new Date(a.end_at).getTime() - new Date(a.start_at).getTime()) /
+            60000,
+        );
+        if (diff > 0) return diff;
+      }
+      if (a.heureDebut && a.heureFin) {
+        const [sH, sM] = a.heureDebut.split(":").map(Number);
+        const [eH, eM] = a.heureFin.split(":").map(Number);
+        const diff = eH * 60 + eM - (sH * 60 + sM);
+        if (diff > 0) return diff;
+      }
+      return 20;
+    };
+
+    // Vérifier si toutes les activités principales (hors accueil/table) sont du Laser Game
+    const allLaser = filteredActs.every((a) => {
       const l = (a.nom || a.label || "").toLowerCase();
       return l.includes("laser");
     });
 
     if (allLaser) {
       let totalMin = 0;
-      mainActs.forEach((a) => {
-        let dur = Number(a.duration);
-        if (!dur || isNaN(dur)) {
-          const [sH, sM] = (a.heureDebut || "00:00").split(":").map(Number);
-          const [eH, eM] = (a.heureFin || "00:00").split(":").map(Number);
-          dur = eH * 60 + eM - (sH * 60 + sM);
-        }
-        totalMin += dur > 0 ? dur : 20;
+      filteredActs.forEach((a) => {
+        totalMin += getActDurationMin(a);
       });
 
       if (totalMin > 0) {
         const firstLabel =
-          mainActs[0].nom || mainActs[0].label || fallbackLabel || "";
+          filteredActs[0].nom || filteredActs[0].label || fallbackLabel || "";
+        const flLower = firstLabel.toLowerCase();
+        const fbLower = (fallbackLabel || "").toLowerCase();
+        const annivPrefix = hasReservedTable ? "Anniversaire " : "";
+
         if (
-          firstLabel.toLowerCase().includes("7-12") ||
-          firstLabel.toLowerCase().includes("enfant") ||
-          (fallbackLabel || "").toLowerCase().includes("enfant")
+          flLower.includes("7-12") ||
+          flLower.includes("enfant") ||
+          fbLower.includes("enfant")
         ) {
-          return `${totalMin} Min Laser Games | Enfant 7-12ans`;
+          return `${totalMin} Min Laser Games | ${annivPrefix}Enfant 7-12ans`;
         } else if (
-          firstLabel.toLowerCase().includes("adulte") ||
-          firstLabel.toLowerCase().includes("+18") ||
-          (fallbackLabel || "").toLowerCase().includes("adulte")
+          flLower.includes("13-18") ||
+          flLower.includes("ado") ||
+          fbLower.includes("ado")
+        ) {
+          return `${totalMin} Min Laser Games | ${annivPrefix}Ado 13-18ans`;
+        } else if (
+          flLower.includes("adulte") ||
+          flLower.includes("+18") ||
+          fbLower.includes("adulte")
         ) {
           return `${totalMin} Min Laser Games | Adulte +18ans`;
         } else {
-          return `${totalMin} Min Laser Games`;
+          return hasReservedTable
+            ? `${totalMin} Min Laser Games | Anniversaire`
+            : `${totalMin} Min Laser Games`;
         }
       }
     }
 
-    // Si ce n'est pas uniquement du Laser Game (ex: 1 Heure de Team Games + 20 Min Laser Game 7-12 ans)
-    // Récupérer les noms distincts
+    // Si ce n'est pas uniquement du Laser Game (ex: 1 Heure de Team Games + 2x 20 Min Laser Game 7-12 ans)
     const distinctNames = [];
+    let laserMin = 0;
+    let laserSuffix = "";
+
     filteredActs.forEach((a) => {
       let n = (a.nom || a.label || "").replace(/▶\s*/g, "").trim();
-      if (n && !distinctNames.includes(n)) {
+      if (!n) return;
+      if (n.toLowerCase().includes("laser")) {
+        laserMin += getActDurationMin(a);
+        if (!laserSuffix) {
+          const m = n.match(/^\d+\s*min\s*(.+)$/i);
+          laserSuffix = m ? m[1].trim() : n;
+        }
+      } else if (!distinctNames.includes(n)) {
         distinctNames.push(n);
       }
     });
 
+    if (laserMin > 0) {
+      distinctNames.push(`${laserMin} Min ${laserSuffix || "Laser Game"}`);
+    }
+
     if (distinctNames.length > 0) {
-      return distinctNames.join(" + ");
+      const joined = distinctNames.join(" + ");
+      return hasReservedTable && !joined.toLowerCase().includes("anniv")
+        ? `${joined} | Anniversaire`
+        : joined;
     }
 
     return fallbackLabel || "Réservation Qweekle";
@@ -2759,8 +2970,14 @@ class AppStateManager {
       cats.push("adulte");
     }
 
-    // Anniversaire: anniversaire, birthday
-    if (/\b(anniversaire|birthday)\b/i.test(fullStr) || /\banniv/i.test(fullStr)) {
+    // Anniversaire: anniversaire, birthday, ou présence d'une table réservée et installée
+    if (
+      /\b(anniversaire|birthday)\b/i.test(fullStr) ||
+      /\banniv/i.test(fullStr) ||
+      /table\s+r[eéè]serv[eéè]e|table\s+install[eéè]e|compl[eè]tement\s+install[eéè]e/i.test(
+        fullStr,
+      )
+    ) {
       cats.push("anniversaire");
     }
 
@@ -2787,6 +3004,19 @@ class AppStateManager {
       )
     ) {
       cats.push("asbl");
+    }
+
+    // Si c'est un anniversaire (ex: 1 Heure de Team Games + Table réservée) sans tranche d'âge explicite ni tag adulte/entreprise
+    if (
+      cats.includes("anniversaire") &&
+      !cats.includes("enfant") &&
+      !cats.includes("ado") &&
+      !cats.includes("adulte") &&
+      !cats.includes("team building") &&
+      !cats.includes("évènement adulte") &&
+      !cats.includes("asbl")
+    ) {
+      cats.push("enfant");
     }
 
     // Correction majeure: Si c'est un anniversaire d'enfant, on retire les tags adultes erronés
