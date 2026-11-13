@@ -2736,6 +2736,65 @@ function printErrorReport() {
   document.body.classList.remove('print-error-report');
 }
 
+// =========================================================================
+// EXPORT EXCEL DES PLANNINGS (ANNIVERSAIRE, LASER, TEAM, QUIZ)
+// =========================================================================
+function exportPlanningToExcel(type) {
+  if (typeof XLSX === "undefined") {
+    alert("Erreur : La bibliothèque d'export Excel (SheetJS) n'est pas chargée.");
+    return;
+  }
+
+  const tableMap = {
+    anniversaire: { id: "table-anniversaire-a4", sheet: "Anniversaire", filePrefix: "Planning_Anniversaire" },
+    laser: { id: "table-laser-a4", sheet: "Laser Game", filePrefix: "Planning_Laser_Game" },
+    team: { id: "table-team-a4", sheet: "Team Game", filePrefix: "Planning_Team_Game" },
+    quiz: { id: "table-quiz-a4", sheet: "Quiz Game", filePrefix: "Planning_Quiz_Game" },
+  };
+
+  const conf = tableMap[type];
+  if (!conf) return;
+
+  const tableEl = document.getElementById(conf.id);
+  if (!tableEl) {
+    alert("Tableau introuvable pour l'export.");
+    return;
+  }
+
+  // Cloner le tableau pour nettoyer le texte (sauts de ligne <br>, espaces multiples) sans toucher à l'affichage
+  const clone = tableEl.cloneNode(true);
+  clone.querySelectorAll("br").forEach((br) => br.replaceWith(" "));
+  clone.querySelectorAll("th, td").forEach((cell) => {
+    cell.textContent = (cell.textContent || "").replace(/\s+/g, " ").trim();
+  });
+
+  const wb = XLSX.utils.book_new();
+  const ws = XLSX.utils.table_to_sheet(clone, { raw: true });
+
+  // Ajuster automatiquement la largeur des colonnes
+  const range = XLSX.utils.decode_range(ws["!ref"] || "A1:A1");
+  const colWidths = [];
+  for (let C = range.s.c; C <= range.e.c; ++C) {
+    let maxLen = 10;
+    for (let R = range.s.r; R <= range.e.r; ++R) {
+      const cellAddress = XLSX.utils.encode_cell({ r: R, c: C });
+      const cell = ws[cellAddress];
+      if (cell && cell.v !== undefined && cell.v !== null) {
+        const len = String(cell.v).length;
+        if (len > maxLen) maxLen = len;
+      }
+    }
+    colWidths.push({ wch: Math.min(maxLen + 3, 45) });
+  }
+  ws["!cols"] = colWidths;
+
+  XLSX.utils.book_append_sheet(wb, ws, conf.sheet);
+
+  const dateStr = (appState && appState.currentDate) ? appState.currentDate : new Date().toISOString().slice(0, 10);
+  XLSX.writeFile(wb, `${conf.filePrefix}_${dateStr}.xlsx`);
+}
+
+window.exportPlanningToExcel = exportPlanningToExcel;
 window.openErrorReportModal = openErrorReportModal;
 window.resetErrorReportImport = resetErrorReportImport;
 window.handleErrorReportFileSelect = handleErrorReportFileSelect;

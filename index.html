@@ -177,6 +177,7 @@
                     <div class="actions">
             <button class="btn-primary" onclick="openTableConfigModal()" style="background-color: #F6AD55; color: #7B341E; border: 1px solid #DD6B20; font-weight: 600;">⚙️ Config. Tables</button>
             <button class="btn-primary" onclick="syncQweekleReservations()">⚡ Sync Qweekle</button>
+            <button class="btn-primary print-hide" onclick="exportPlanningToExcel('anniversaire')" style="background-color: #2F855A; border-color: #276749;">📊 Exporter Excel</button>
             <button class="btn-primary print-hide" id="print-button" onclick="window.print()">🖨️ Imprimer A4</button>
         </div>        </div>
             </div>
@@ -227,6 +228,7 @@
                 </div>
                 <div style="display: flex; gap: 10px;">
                     <div class="actions">
+                        <button class="btn-primary print-hide" onclick="exportPlanningToExcel('laser')" style="background-color: #2F855A; border-color: #276749;">📊 Exporter Excel</button>
                         <button class="btn-primary print-hide" onclick="window.print()">🖨️ Imprimer A4</button>
                         <button class="btn-primary" onclick="syncQweekleReservations()">⚡ Sync Qweekle</button>
                         <button type="button" class="btn-add" onclick="openEventModal('laser')">+ Ajouter une session</button>
@@ -257,6 +259,7 @@
                     <p class="view-subtitle" id="subtitle-team">Défis d'équipe et Prison Island (Format imprimable)</p>
                 </div>
                 <div style="display: flex; gap: 10px; align-items: center;">
+                    <button type="button" class="btn-primary print-hide" onclick="exportPlanningToExcel('team')" style="background-color: #2F855A; border-color: #276749;">📊 Exporter Excel</button>
                     <button type="button" class="btn-print" onclick="window.print()">🖨️ Imprimer A4</button>
                     <button type="button" class="btn-add" onclick="openEventModal('team')">+ Ajouter un Team Game</button>
                 </div>
@@ -285,6 +288,7 @@
                     <p class="view-subtitle" id="subtitle-quiz">Émissions sur plateau type plateau TV & buzzers (Format imprimable)</p>
                 </div>
                 <div style="display: flex; gap: 10px; align-items: center;">
+                    <button type="button" class="btn-primary print-hide" onclick="exportPlanningToExcel('quiz')" style="background-color: #2F855A; border-color: #276749;">📊 Exporter Excel</button>
                     <button type="button" class="btn-print" onclick="window.print()">🖨️ Imprimer A4</button>
                     <button type="button" class="btn-add" onclick="openEventModal('quiz')">+ Ajouter un Quiz Game</button>
                 </div>
@@ -564,9 +568,9 @@
 
     <!-- Scripts JavaScript -->
     <script src="https://cdn.jsdelivr.net/npm/xlsx@0.18.5/dist/xlsx.full.min.js"></script>
-    <script src="config.js?v=33"></script>
-    <script src="state.js?v=33"></script>
-    <script src="table-assignment.js?v=33"></script>
-    <script src="app.js?v=33"></script>
+    <script src="config.js?v=34"></script>
+    <script src="state.js?v=34"></script>
+    <script src="table-assignment.js?v=34"></script>
+    <script src="app.js?v=34"></script>
 </body>
 </html>
