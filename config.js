@@ -88,22 +88,14 @@ const CONFIG = {
     },
 
     // ----------------------------------------------------------------------
-    // GESTION CENTRALISÉE DES TOKENS ET API (EXTRAITE SELON RECOMMANDATION)
+    // GESTION CENTRALISÉE DES TOKENS ET API (PASSERELLE SERVEUR SÉCURISÉE V3)
     // ----------------------------------------------------------------------
-    // Clé API Qweekle (Format Laravel Sanctum : ID|TOKEN)
-    QWEEKLE_API_TOKEN: "1504|dLt4sg4TJItm7U3UBXQOELOSjFtCUYqjKl13q6dm0780e9ce",
-    // URL de base de l'API Qweekle (susceptible de changer lors de leur MAJ)
-    QWEEKLE_API_BASE_URL: "https://api.qweekle.io/api",
-    
-    // Fonction utilitaire pour générer les en-têtes d'authentification Qweekle
-    getQweekleHeaders: function() {
-        return {
-            "Authorization": "Bearer " + this.QWEEKLE_API_TOKEN,
-            "Accept": "application/json"
-        };
-    },
+    // La clé API Qweekle V3, le tenant et le x-venture-id sont conservés
+    // exclusivement côté serveur (Cloud Function / Edge Function) et ne sont
+    // plus jamais exposés dans le navigateur.
+    QWEEKLE_PROXY_URL: "https://us-central1-gravity-chat-522a8.cloudfunctions.net/sfgQweekleProxy",
 
-    // Base de Données Live Supabase (Webhooks fallback)
+    // Base de Données Live Supabase (Webhooks & Notes personnalisées)
     SUPABASE_URL: "https://uyptbypqzfkdsvpdvwyz.supabase.co",
     SUPABASE_KEY: "eyJhbGciOiJIUzI1NiIsInR5cCI6IkpXVCJ9.eyJpc3MiOiJzdXBhYmFzZSIsInJlZiI6InV5cHRieXBxemZrZHN2cGR2d3l6Iiwicm9sZSI6ImFub24iLCJpYXQiOjE3ODAxNTA1ODAsImV4cCI6MjA5NTcyNjU4MH0.ZEZxlWA9H0u6iP3IHn97XjqNABUEl3kqVcsecx9GPKg",
 

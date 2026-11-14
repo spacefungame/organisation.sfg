@@ -595,7 +595,7 @@ class AppStateManager {
   getQweekleReservationsForDate(dateStr) {
     // 1. Vérifier si des données Qweekle synchronisées ou en cache sont disponibles pour cette date
     const cachedStore = this.hasLocalStorage()
-      ? JSON.parse(localStorage.getItem("SFG_QWEEKLE_STORE_V14") || "{}")
+      ? JSON.parse(localStorage.getItem("SFG_QWEEKLE_STORE_V15") || "{}")
       : {};
     if (cachedStore[dateStr] && Array.isArray(cachedStore[dateStr])) {
       // Ne pas utiliser un cache démo ancien (Marc Dupont QW-90102) si la base Supabase est active
@@ -637,6 +637,16 @@ class AppStateManager {
   isOptionLabel(text) {
     if (!text || typeof text !== "string") return false;
     const lower = text.toLowerCase();
+    // Si l'intitulé désigne un pack d'activité (Laser, Team Game, Quiz) sans "+", ce n'est pas une option alimentaire
+    if (
+      !lower.includes("+") &&
+      (lower.includes("laser") ||
+        lower.includes("team game") ||
+        lower.includes("quiz") ||
+        lower.includes("quizz"))
+    ) {
+      return false;
+    }
     return (
       lower.includes("option") ||
       lower.includes("produit") ||
@@ -693,418 +703,225 @@ class AppStateManager {
       };
     }
 
-    // 3. Charger le cache, puis rafraîchir en arrière-plan depuis Supabase si configuré
+    // Charger le cache des notes/tables personnalisées depuis Supabase
     await this.syncOverridesFromSupabase(dateStr);
     await this.syncCustomTablesFromSupabase();
 
-    // 1. Tenter en direct via l'API REST officielle de Qweekle (Priorité 1 absolue maintenant qu'on a le token !)
-    if (CONFIG.QWEEKLE_API_TOKEN && CONFIG.QWEEKLE_API_BASE_URL) {
+    // 1. Tenter via la passerelle serveur sécurisée Qweekle V3 (Priorité 1 absolue : clé gardée côté serveur)
+    if (CONFIG.QWEEKLE_PROXY_URL) {
       try {
-        let allBookingsData = [];
-        let currentPage = 1;
-        let lastPage = 1;
-        let isSuccess = true;
+        const proxyUrl = `${CONFIG.QWEEKLE_PROXY_URL}?date=${encodeURIComponent(dateStr)}&_=${Date.now()}`;
+        const response = await fetch(proxyUrl, {
+          method: "GET",
+          headers: { Accept: "application/json" },
+          cache: "no-store",
+        });
 
-        do {
-          const url = `${CONFIG.QWEEKLE_API_BASE_URL}/bookings?filter[agenda.starts_between]=${dateStr}T00:00:00,${dateStr}T23:59:59&withOrder=true&perPage=100&page=${currentPage}&_=${Date.now()}`;
-          const response = await fetch(url, {
-            method: "GET",
-            headers: CONFIG.getQweekleHeaders(),
-            cache: "no-store",
-          });
+        if (response.ok) {
+          const proxyJson = await response.json();
+          const v3Bookings = Array.isArray(proxyJson.data) ? proxyJson.data : [];
+          const ordersMap = proxyJson.orders || {};
 
-          if (!response.ok) {
-            isSuccess = false;
-            break;
-          }
+          // Extraire l'intitulé du pack principal et les options de chaque commande V3
+          const mainPackLabelByOrder = {};
+          const injectedOptionRows = [];
 
-          const json = await response.json();
-          if (json.data && Array.isArray(json.data)) {
-            allBookingsData = allBookingsData.concat(json.data);
-          }
+          Object.values(ordersMap).forEach((orderData) => {
+            if (!orderData || !Array.isArray(orderData.items)) return;
 
-          lastPage = json.metadata?.lastPage || 1;
-          currentPage++;
-        } while (currentPage <= lastPage);
+            // Conserver note interne ET note client distinctes
+            if (orderData.front_note && orderData.note && !orderData.internal_note) {
+              orderData.internal_note = orderData.note;
+            }
 
-        if (isSuccess) {
-          const rawBookings = allBookingsData.filter((b) => {
-            const st = (b.state || "").toLowerCase();
-            const orderSt = (b.order?.state || b.order_item?.order?.state || "").toLowerCase();
-            
-            if (st === "cancelled" || st === "canceled" || st === "deleted" || st === "rejected") return false;
-            if (orderSt === "cancelled" || orderSt === "canceled" || orderSt === "deleted" || orderSt === "rejected") return false;
-            
-            if (b.deleted_at) return false;
-            if (b.order?.deleted_at) return false;
-            if (b.order_item?.deleted_at) return false;
-            if (b.order_item?.order?.deleted_at) return false;
+            const packCandidates = [];
+            orderData.items.forEach((item) => {
+              if (item.deleted_at) return;
+              const lbl = (item.label || item.product_name || item.name || "").trim();
+              if (!lbl) return;
+              const lblLower = lbl.toLowerCase();
 
-            const orderType = b.order_item?.order?.type || b.order?.type;
+              // Ignorer les acomptes, déductions et bons cadeaux
+              if (
+                lblLower.includes("acompte") ||
+                lblLower.includes("déduction") ||
+                lblLower.includes("deduction") ||
+                item.type === "DEPOSIT" ||
+                item.type === "PAID_DEPOSIT" ||
+                item.type === "VOUCHER"
+              ) {
+                return;
+              }
 
-            // Exclure les blocs fantômes/orphelins (qui n'ont plus de lien avec une commande/facture)
-            if (!b.order_item && !b.sale_item_id && b.type === "A")
-              return false;
-
-            // Conserver les 'propositions' (unconfirmed) si elles ont été créées par le staff (sale_order)
-            // Rejeter les paniers abandonnés sur le site web (front_order) et les brouillons de planning non validés (planning_order), SAUF s'il y a eu un paiement
-            const globalSt = (b.global_status || b.order?.global_status || b.order_item?.order?.global_status || "").toLowerCase();
-            if (st === "unconfirmed" && (orderType === "front_order" || orderType === "planning_order") && globalSt !== "partially_paid" && globalSt !== "paid")
-              return false;
-
-            return true;
-          });
-
-          // --- NOUVEAU : Récupérer les infos clients et les items supplémentaires ---
-          const orderIds = Array.from(
-            new Set(
-              rawBookings
-                .map((b) => b.order_item?.order_id || b.sale_id || b.order_id)
-                .filter(Boolean),
-            ),
-          );
-          const clientIds = Array.from(
-            new Set(
-              rawBookings
-                .map(
-                  (b) =>
-                    b.client_id ||
-                    b.order_item?.order?.client_id ||
-                    b.order?.client_id,
-                )
-                .filter(Boolean),
-            ),
-          );
-
-          let clientsMap = {};
-          let ordersMap = {};
-
-          try {
-            const clientPromises = clientIds.map((cid) =>
-              fetch(`${CONFIG.QWEEKLE_API_BASE_URL}/clients/${cid}`, {
-                headers: CONFIG.getQweekleHeaders(),
-              })
-                .then((r) => r.json())
-                .then((data) => {
-                  if (data && data.data) clientsMap[cid] = data.data;
-                })
-                .catch(() => null),
-            );
-
-            const orderPromises = orderIds.map((oid) =>
-              fetch(
-                `${CONFIG.QWEEKLE_API_BASE_URL}/orders/${oid}?include=items`,
-                { headers: CONFIG.getQweekleHeaders() },
-              )
-                .then((r) => r.json())
-                .then((data) => {
-                  if (data && data.data) ordersMap[oid] = data.data;
-                })
-                .catch(() => null),
-            );
-
-            await Promise.all([...clientPromises, ...orderPromises]);
-
-            Object.values(ordersMap).forEach((orderData) => {
-              if (orderData && orderData.items) {
-                orderData.items.forEach((item) => {
-                  const lbl =
-                    item.label || item.product_name || item.name || "";
-                  const lblLower = lbl.toLowerCase();
-
-                  // Ignorer les acomptes, déductions et frais divers qui ne sont pas des vrais produits/options
-                  if (
-                    lblLower.includes("acompte") ||
-                    lblLower.includes("déduction") ||
-                    lblLower.includes("deduction") ||
-                    item.type === "DEPOSIT" ||
-                    item.type === "PAID_DEPOSIT" ||
-                    item.type === "VOUCHER"
-                  )
-                    return;
-
-                  // Injecter comme une ligne factice
-                  rawBookings.push({
-                    id: item.id || `item_${Math.random()}`,
-                    order_item: { order_id: orderData.id },
-                    client_id: orderData.client_id,
-                    activity: { label: lbl },
-                    qty: item.qty,
-                    type: item.type || "PRODUCT",
-                    deleted_at: item.deleted_at,
-                    state: item.state,
-                    global_status: item.global_status || item.state,
-                    raw_payload: {
-                      ...item,
-                      type: item.type || "PRODUCT",
-                      label: lbl,
-                      order_item: { order_id: orderData.id },
-                    },
-                  });
+              if (this.isOptionLabel(lbl)) {
+                injectedOptionRows.push({
+                  id: item.id || `item_${Math.random()}`,
+                  order_id: orderData.id,
+                  label: lbl,
+                  category: "Options",
+                  qty: item.qty || 1,
+                  start_at: null,
+                  end_at: null,
+                  type: "OPTION",
+                  raw_payload: {
+                    ...item,
+                    type: "OPTION",
+                    label: lbl,
+                    order: orderData,
+                    order_item: { order_id: orderData.id, id: item.id },
+                    client: { id: orderData.client_id },
+                  },
                 });
+              } else {
+                packCandidates.push(lbl);
               }
             });
-          } catch (e) {
-            console.warn(
-              "⚠️ Impossible de récupérer infos supplémentaires API :",
-              e,
-            );
-          }
 
-          // --- NOUVEAU : Récupérer les sous-comptes (enfants) ET les nouvelles réservations/modifications post-migration (BXXX) depuis Supabase ---
-          let supabaseSubclientsMap = {};
-          let newSupabaseRows = [];
-          let noteSupabaseRows = [];
-          if (CONFIG.SUPABASE_URL && CONFIG.SUPABASE_KEY) {
-            try {
-              const prevDate = new Date(dateStr);
-              prevDate.setDate(prevDate.getDate() - 1);
-              const prevDateStr = prevDate.toISOString().split("T")[0];
-              const nextDate = new Date(dateStr);
-              nextDate.setDate(nextDate.getDate() + 1);
-              const nextDateStr = nextDate.toISOString().split("T")[0];
-              const supaUrl = `${CONFIG.SUPABASE_URL}/rest/v1/booking_activities?select=*&start_at=gte.${prevDateStr}T12:00:00Z&start_at=lt.${nextDateStr}T23:59:59Z&order=pack_step.asc`;
-
-              const responseSupa = await fetch(supaUrl, {
-                method: "GET",
-                headers: {
-                  apikey: CONFIG.SUPABASE_KEY,
-                  Authorization: `Bearer ${CONFIG.SUPABASE_KEY}`,
-                },
-                cache: "no-store",
-              });
-              if (responseSupa.ok) {
-                const supaData = await responseSupa.json();
-                supaData.forEach((row) => {
-                  const qbId = row.qweekle_booking_id || row.raw_payload?.id || "";
-                  if (qbId.startsWith("NOTE_")) {
-                    noteSupabaseRows.push(row);
-                    return;
-                  }
-
-                  if (row.raw_payload) {
-                    const subs =
-                      row.raw_payload.subclients ||
-                      row.raw_payload.client?.sub_clients ||
-                      row.raw_payload.participants ||
-                      [];
-                    if (subs.length > 0) {
-                      if (row.order_id) supabaseSubclientsMap[row.order_id] = subs;
-                      if (row.qweekle_booking_id) supabaseSubclientsMap[row.qweekle_booking_id] = subs;
-                      if (row.raw_payload.client?.id) supabaseSubclientsMap[row.raw_payload.client.id] = subs;
-                    }
-                  }
-
-                  // Détecter les réservations créées ou modifiées dans le nouveau Qweekle (IDs BXXX...)
-                  const isNewQweekle =
-                    qbId.startsWith("BXXX") ||
-                    (row.created_at && row.created_at >= "2026-11-08T19:50:00Z");
-
-                  if (isNewQweekle) {
-                    const cl = row.raw_payload?.client || {};
-                    const hasValidClient = Boolean(
-                      row.client_lastname ||
-                        row.client_firstname ||
-                        row.client_email ||
-                        cl.id ||
-                        cl.lastname ||
-                        cl.firstname ||
-                        cl.society ||
-                        cl.email,
-                    );
-                    if (hasValidClient) {
-                      if (
-                        row.raw_payload &&
-                        Array.isArray(row.raw_payload.participants) &&
-                        row.raw_payload.client &&
-                        !row.raw_payload.client.sub_clients
-                      ) {
-                        row.raw_payload.client.sub_clients = row.raw_payload.participants;
-                      }
-                      newSupabaseRows.push(row);
-                    }
-                  }
-                });
-              }
-            } catch (e) {
-              console.warn(
-                "⚠️ Impossible de récupérer les données Supabase complémentaires :",
-                e,
-              );
+            if (packCandidates.length > 0) {
+              // Privilégier l'intitulé contenant "anniv", "pack", "formule" ou "+"
+              const bestPack =
+                packCandidates.find((p) =>
+                  /anniv|pack|formule|\+/i.test(p),
+                ) || packCandidates[0];
+              mainPackLabelByOrder[orderData.id] = bestPack;
             }
-          }
+          });
 
-          // Convertir au format unifié "Supabase" pour utiliser le parseur ultra-optimisé
-          let unifiedRows = rawBookings.map((b) => {
+          // Convertir les réservations Qweekle V3 au format unifié pour parseSupabaseActivitiesToBookings
+          let unifiedRows = v3Bookings.map((b) => {
             const orderId =
-              b.order_item?.order_id || b.sale_id || b.order_id || b.id;
-            let startAt =
-              b.agenda?.start_at || b.agenda?.convoc_start_at || null;
-            if (!startAt && b.created_at && b.type !== "PRODUCT")
-              startAt = b.created_at;
+              b.order_id || b.order_item?.order_id || b.sale_id || b.id;
+            const startAt =
+              b.agenda_activity_start_at ||
+              b.agenda?.start_at ||
+              b.convoc_start_at ||
+              b.agenda?.convoc_start_at ||
+              b.start_at ||
+              b.created_at ||
+              null;
+            const endAt =
+              b.agenda_activity_end_at ||
+              b.agenda?.end_at ||
+              b.convoc_end_at ||
+              b.agenda?.convoc_end_at ||
+              b.end_at ||
+              null;
 
             const cid =
               b.client_id ||
+              b.client?.id ||
               b.order_item?.order?.client_id ||
               b.order?.client_id;
-            const clientData = clientsMap[cid] || {};
+            const cl = b.client || {};
             const orderData = ordersMap[orderId] || {};
 
-            // Recréer le payload pour leurrer parseSupabaseActivitiesToBookings
+            // Normaliser les sous-comptes enfants V3 (client_subs)
+            const rawSubs =
+              b.client_subs ||
+              cl.sub_clients ||
+              b.subclients ||
+              b.participants ||
+              [];
+            const normalizedSubs = rawSubs.map((sc) => ({
+              ...sc,
+              firstname: sc.firstname || sc.metadata?.firstname || "",
+              lastname: sc.lastname || sc.metadata?.lastname || "",
+              birthday_at: sc.birthday_at || sc.metadata?.birthday_at || null,
+            }));
+
+            const actLabel =
+              b.activity?.label ||
+              b.label ||
+              b.product_label ||
+              "Activité Qweekle";
+            const locLabel =
+              b.location_label ||
+              b.agenda?.location?.label ||
+              b.location ||
+              "";
+            const packLabel =
+              mainPackLabelByOrder[orderId] || b.order_item?.label || "";
+
             const fakePayload = {
               ...b,
+              product_label: undefined, // Éviter la confusion entre le nom de l'activité V3 et le nom du pack
+              order_item: {
+                ...(b.order_item || {}),
+                id: b.order_item?.id || b.sale_item_id || "",
+                order_id: orderId,
+                label: packLabel,
+              },
               order: {
-                ...b.order,
+                ...(b.order || {}),
                 ...orderData,
               },
               client: {
-                ...b.client,
-                ...clientData,
-                firstname:
-                  clientData.firstname || b.client?.firstname || "Client",
-                lastname:
-                  clientData.lastname || b.client?.lastname || "Qweekle",
-                society: clientData.society || b.client?.society || "",
-                type: clientData.type || "B2C",
-                sub_clients:
-                  supabaseSubclientsMap[orderId] ||
-                  supabaseSubclientsMap[cid] ||
-                  [],
+                ...cl,
+                id: cid || cl.id,
+                firstname: cl.firstname || "Client",
+                lastname: cl.lastname || "Qweekle",
+                society: cl.society || "",
+                type: cl.type || "B2C",
+                sub_clients: normalizedSubs,
               },
             };
 
             return {
               id: b.id,
+              qweekle_booking_id: b.id,
               order_id: orderId,
-              label: b.activity?.label || b.label || "Produit Qweekle",
-              category:
-                b.type === "PRODUCT"
-                  ? "Options"
-                  : b.activity?.category || "Activité",
+              client_id: cid,
+              label: actLabel,
+              location: locLabel,
+              category: b.activity?.category || b.category || "Activité",
               qty: b.qty || b.agenda?.qty_pax || 1,
               start_at: startAt,
-              end_at: b.agenda?.end_at || b.agenda?.convoc_end_at || null,
+              end_at: endAt,
+              global_status: b.global_status || orderData.status || "confirmed",
               raw_payload: fakePayload,
             };
           });
 
-          // Fusionner les réservations/modifications post-migration (BXXX) issues de Supabase
-          if (newSupabaseRows.length > 0) {
-            const normName = (ln, fn) => {
-              const l = (ln || "").trim().toLowerCase();
-              const f = (fn || "").trim().toLowerCase();
-              return l && l !== "qweekle" ? `${l}|${f}` : "";
-            };
-
-            // Identifier les clients ayant des créneaux BXXX sur cette date pour remplacer leurs anciens créneaux ABXX s'ils ont été modifiés
-            const modifiedClientIds = new Set();
-            const modifiedClientNames = new Map(); // normName -> BXXX client id
-
-            newSupabaseRows.forEach((r) => {
-              if (!r.start_at) return;
-              const rDate = new Date(r.start_at).toLocaleDateString("en-CA", {
-                timeZone: "Europe/Brussels",
-              });
-              if (rDate !== dateStr) return;
-              const cl = r.raw_payload?.client || {};
-              const cid = cl.id || r.client_id;
-              if (cid) modifiedClientIds.add(cid);
-              const nk = normName(
-                r.client_lastname || cl.lastname,
-                r.client_firstname || cl.firstname,
-              );
-              if (nk) modifiedClientNames.set(nk, cid || nk);
-            });
-
-            if (modifiedClientIds.size > 0 || modifiedClientNames.size > 0) {
-              const inheritedOrderByClient = new Map();
-              unifiedRows = unifiedRows.filter((oldRow) => {
-                const cl = oldRow.raw_payload?.client || {};
-                const oldCid = cl.id || oldRow.client_id;
-                const nk = normName(cl.lastname, cl.firstname);
-                const isModifiedClient =
-                  (oldCid && modifiedClientIds.has(oldCid)) ||
-                  (nk && modifiedClientNames.has(nk));
-
-                if (!isModifiedClient) return true;
-
-                const targetCid =
-                  (nk && modifiedClientNames.get(nk)) || oldCid;
-                if (targetCid && oldRow.raw_payload?.order) {
-                  inheritedOrderByClient.set(targetCid, {
-                    order: oldRow.raw_payload.order,
-                    order_id: oldRow.order_id,
-                    order_item: oldRow.raw_payload.order_item,
-                  });
-                }
-
-                // Conserver les lignes PRODUCT/options de la commande en les rattachant au nouveau client.id
-                if (oldRow.raw_payload?.type === "PRODUCT" || !oldRow.start_at) {
-                  if (targetCid && oldRow.raw_payload?.client) {
-                    oldRow.raw_payload.client.id = targetCid;
-                  }
-                  return true;
-                }
-                // Supprimer l'ancien créneau horaire ABXX remplacé par les nouveaux créneaux BXXX
-                return false;
-              });
-
-              // Propager les métadonnées de commande (notes/pack) aux nouvelles lignes BXXX du même client
-              newSupabaseRows.forEach((r) => {
-                const cl = r.raw_payload?.client || {};
-                const nk = normName(
-                  r.client_lastname || cl.lastname,
-                  r.client_firstname || cl.firstname,
-                );
-                const cid = cl.id || r.client_id || (nk && modifiedClientNames.get(nk));
-                const inherited = cid && inheritedOrderByClient.get(cid);
-                if (inherited && r.raw_payload) {
-                  if (!r.raw_payload.order) r.raw_payload.order = inherited.order;
-                  if (!r.order_id) r.order_id = inherited.order_id;
-                }
-              });
-            }
-
-            unifiedRows = unifiedRows.concat(newSupabaseRows);
+          if (injectedOptionRows.length > 0) {
+            unifiedRows = unifiedRows.concat(injectedOptionRows);
           }
 
-          if (noteSupabaseRows.length > 0) {
-            unifiedRows = unifiedRows.concat(noteSupabaseRows);
-          }
-
-          // Utiliser parseSupabaseActivitiesToBookings !
           const parsedList = this.parseSupabaseActivitiesToBookings(
             unifiedRows,
             dateStr,
           );
-          // --- FIN NOUVEAU ---
 
           if (this.hasLocalStorage()) {
             const cachedStore = JSON.parse(
-              localStorage.getItem("SFG_QWEEKLE_STORE_V14") || "{}",
+              localStorage.getItem("SFG_QWEEKLE_STORE_V15") || "{}",
             );
             cachedStore[dateStr] = parsedList;
             const keys = Object.keys(cachedStore).sort();
             if (keys.length > 30) {
-              keys.slice(0, keys.length - 30).forEach((k) => delete cachedStore[k]);
+              keys
+                .slice(0, keys.length - 30)
+                .forEach((k) => delete cachedStore[k]);
             }
             try {
               localStorage.setItem(
-                "SFG_QWEEKLE_STORE_V14",
+                "SFG_QWEEKLE_STORE_V15",
                 JSON.stringify(cachedStore),
               );
             } catch (err) {
-              console.warn("⚠️ Impossible de sauvegarder dans le cache local (Quota ?) :", err);
+              console.warn(
+                "⚠️ Impossible de sauvegarder dans le cache local (Quota ?) :",
+                err,
+              );
             }
           }
           return {
             status: "success",
             data: parsedList,
-            source: "qweekle_rest",
+            source: "qweekle_v3_proxy",
           };
         }
       } catch (error) {
-        console.warn("⚠️ Erreur API directe Qweekle :", error.message);
+        console.warn("⚠️ Erreur passerelle Qweekle V3 :", error.message);
       }
     }
 
@@ -1215,7 +1032,7 @@ class AppStateManager {
 
           if (this.hasLocalStorage()) {
             const cachedStore = JSON.parse(
-              localStorage.getItem("SFG_QWEEKLE_STORE_V14") || "{}",
+              localStorage.getItem("SFG_QWEEKLE_STORE_V15") || "{}",
             );
             cachedStore[dateStr] = parsedList;
             const keys = Object.keys(cachedStore).sort();
@@ -1224,7 +1041,7 @@ class AppStateManager {
             }
             try {
               localStorage.setItem(
-                "SFG_QWEEKLE_STORE_V14",
+                "SFG_QWEEKLE_STORE_V15",
                 JSON.stringify(cachedStore),
               );
             } catch (err) {
@@ -1602,7 +1419,7 @@ class AppStateManager {
       }
 
       // 4. Activités détaillées (seulement les activités, pas les produits injectés)
-      const activites = activitiesForSchedule.map((act) => {
+      const rawActivites = activitiesForSchedule.map((act) => {
         const s = new Date(act.start_at || act.created_at || Date.now());
         const sMs = s.getTime();
         let eMs = act.end_at
@@ -1644,6 +1461,22 @@ class AppStateManager {
           nbPersonnes: actQty,
           orderItemId: act.raw_payload?.order_item?.id || act.order_item?.id || act.raw_payload?.order_item_id || act.order_item_id || "",
         };
+      });
+
+      // Fusionner les activités identiques tombant exactement à la même heure au sein d'un même dossier (ex: 15p + 4p ajoutés sur la même séance de Laser)
+      const activites = [];
+      rawActivites.forEach((a) => {
+        const existing = activites.find(
+          (ex) =>
+            ex.heureDebut === a.heureDebut &&
+            ex.nom.toLowerCase() === a.nom.toLowerCase(),
+        );
+        if (existing) {
+          existing.nbPersonnes =
+            (Number(existing.nbPersonnes) || 0) + (Number(a.nbPersonnes) || 0);
+        } else {
+          activites.push({ ...a });
+        }
       });
 
       // 5. Nom du pack (en priorité depuis le titre exact de commande/produit dans Qweekle, sinon calculé depuis les activités)
@@ -1912,10 +1745,21 @@ class AppStateManager {
                   (originalPackStr &&
                     (originalPackStr.toLowerCase().includes(oiLower) ||
                       oiLower.includes(originalPackStr.toLowerCase())));
+                const oiIsAlreadyActivity = activitiesForSchedule.some((mainAct) => {
+                  const mainLbl = (mainAct.label || mainAct.nom || "").toLowerCase();
+                  if (!mainLbl || !oiLower) return false;
+                  return (
+                    mainLbl === oiLower ||
+                    (oiLower.includes("laser game") && mainLbl.includes("laser game")) ||
+                    (oiLower.includes("team game") && mainLbl.includes("team game")) ||
+                    (oiLower.includes("quiz") && mainLbl.includes("quiz"))
+                  );
+                });
 
                 if (
                   oiLabel &&
                   !oiMatchesPack &&
+                  !oiIsAlreadyActivity &&
                   (oiType === "PRODUCT" ||
                     oiType === "OPTION" ||
                     oi.category?.toLowerCase().includes("option") ||
